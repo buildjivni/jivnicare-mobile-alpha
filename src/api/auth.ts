@@ -16,8 +16,9 @@ export const authApi = {
   },
 
   /**
-   * Native Google OAuth Sign-In for Doctors (Direct NextAuth Google Provider Integration)
-   * Obtains authorization URL via NextAuth CSRF + POST /signin/google and launches native browser
+   * Native Google OAuth Sign-In for Doctors
+   * Uses backend /api/auth/mobile-start in-browser bridge to ensure NextAuth session cookies
+   * and callbackUrl are established directly in the browser's cookie jar.
    */
   signInWithGoogle: async (): Promise<{
     success: boolean;
@@ -32,40 +33,13 @@ export const authApi = {
         path: "auth-callback",
       });
 
-      // 2. Fetch NextAuth CSRF token
-      const csrfRes = await fetch(`${DEFAULT_API_BASE_URL}/api/auth/csrf`);
-      const csrfData = await csrfRes.json().catch(() => ({}));
-      const rawCookies = csrfRes.headers.get("set-cookie") || "";
+      // 2. Open dedicated mobile OAuth bridge in native auth browser
+      const authUrl = `${DEFAULT_API_BASE_URL}/api/auth/mobile-start?flow=doctor&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}`;
 
-      if (!csrfData?.csrfToken) {
-        throw new Error("Unable to initialize secure authentication session.");
-      }
-
-      // 3. Initiate Google OAuth via NextAuth POST endpoint to obtain direct Google consent URL
-      const callbackUrl = `/api/auth/session-callback?flow=doctor&client=mobile&redirect_uri=${encodeURIComponent(redirectUri)}`;
-      const formData = new URLSearchParams();
-      formData.append("csrfToken", csrfData.csrfToken);
-      formData.append("callbackUrl", callbackUrl);
-      formData.append("json", "true");
-
-      const signinRes = await fetch(`${DEFAULT_API_BASE_URL}/api/auth/signin/google`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          ...(rawCookies ? { Cookie: rawCookies } : {}),
-        },
-        body: formData.toString(),
-      });
-
-      const signinData = await signinRes.json().catch(() => ({}));
-      const googleAuthUrl = signinData?.url;
-
-      if (!googleAuthUrl) {
-        throw new Error("Could not retrieve Google authorization URL.");
-      }
-
-      console.log("[OAuth] Launching Google Auth URL directly in browser...");
-      const result = await WebBrowser.openAuthSessionAsync(googleAuthUrl, redirectUri);
+      console.log("[OAuth] Opening mobile-start bridge in browser:", authUrl);
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
       console.log("[OAuth] Browser Session Result:", result.type);
 
       if (result.type === "success" && result.url) {
