@@ -162,13 +162,13 @@ export const PatientRecordsScreen: React.FC = () => {
                     {item.type || "Online"} • {item.date || "Today"}
                   </Text>
                 </View>
-                {item.visitCount && (
+                {item.visitCount ? (
                   <Badge
                     label={`Visit #${item.visitCount}`}
                     variant="accent"
                     size="sm"
                   />
-                )}
+                ) : null}
               </View>
 
               <View style={styles.cardBottomRow}>
@@ -242,12 +242,12 @@ export const PatientRecordsScreen: React.FC = () => {
               <Text style={styles.detailLabel}>Consultation Status</Text>
               <Text style={styles.detailValue}>{selectedPatient.status || "COMPLETED"}</Text>
             </View>
-            {selectedPatient.address && (
+            {selectedPatient.address ? (
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Patient Address</Text>
                 <Text style={styles.detailValue}>{selectedPatient.address}</Text>
               </View>
-            )}
+            ) : null}
           </View>
         </Modal>
       )}
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 80,
+    paddingBottom: 130,
   },
   patientCard: {
     marginBottom: 10,
