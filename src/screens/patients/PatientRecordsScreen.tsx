@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   TouchableOpacity,
   RefreshControl,
   Share,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { Input } from "../../components/ui/Input";
 import { Card } from "../../components/ui/Card";
@@ -94,7 +94,7 @@ export const PatientRecordsScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       {/* Top Header */}
       <View style={styles.header}>
         <View>
@@ -251,7 +251,7 @@ export const PatientRecordsScreen: React.FC = () => {
           </View>
         </Modal>
       )}
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 

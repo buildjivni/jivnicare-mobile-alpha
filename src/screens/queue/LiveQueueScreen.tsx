@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   FlatList,
   RefreshControl,
   TouchableOpacity,
   Alert,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { QueueStatCards } from "./components/QueueStatCards";
 import { UpNextCallingDeck } from "./components/UpNextCallingDeck";
@@ -269,7 +269,7 @@ export const LiveQueueScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       {/* Top Header Bar */}
       <View style={styles.headerBar}>
         <View style={styles.headerLeft}>
@@ -416,7 +416,7 @@ export const LiveQueueScreen: React.FC = () => {
           await fetchQueueData(false);
         }}
       />
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 

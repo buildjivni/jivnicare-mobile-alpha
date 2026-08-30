@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Linking,
   Alert,
   Image,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
@@ -102,7 +102,7 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header Profile Card */}
         <Card style={styles.profileHeaderCard}>
@@ -233,7 +233,7 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
           multiline
         />
       </Modal>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 

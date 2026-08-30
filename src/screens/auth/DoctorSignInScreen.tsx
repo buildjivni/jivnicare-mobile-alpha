@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
   ScrollView,
   BackHandler,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import Svg, { Path } from "react-native-svg";
 import { colors, typography, radius, shadows } from "../../theme";
 import { BrandLogo } from "../../components/shared/BrandLogo";
@@ -65,7 +65,7 @@ export const DoctorSignInScreen: React.FC<DoctorSignInScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Top Header */}
@@ -199,7 +199,7 @@ export const DoctorSignInScreen: React.FC<DoctorSignInScreenProps> = ({
           </Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 

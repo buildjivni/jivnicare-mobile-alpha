@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -11,6 +10,7 @@ import {
   Alert,
   BackHandler,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { BrandLogo } from "../../components/shared/BrandLogo";
 import { Input } from "../../components/ui/Input";
@@ -269,7 +269,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onExit} style={styles.iconButton}>
@@ -680,7 +680,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 

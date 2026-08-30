@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
 } from "react-native";
+import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { BrandLogo } from "../../components/shared/BrandLogo";
 import { Button } from "../../components/ui/Button";
@@ -37,7 +37,7 @@ export const PartnerIntroScreen: React.FC<PartnerIntroScreenProps> = ({
   onSignIn,
 }) => {
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Top Header Bar */}
@@ -179,7 +179,7 @@ export const PartnerIntroScreen: React.FC<PartnerIntroScreenProps> = ({
           style={styles.secondaryButton}
         />
       </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 
