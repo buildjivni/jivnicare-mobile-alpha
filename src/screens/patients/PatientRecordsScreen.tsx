@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   Share,
+  ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { Input } from "../../components/ui/Input";
 import { Card } from "../../components/ui/Card";
 import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import { Skeleton } from "../../components/ui/Skeleton";
 import { doctorApi } from "../../api/doctor";
 import {
   Search,
@@ -26,16 +26,40 @@ import {
   CheckCircle2,
   Clock,
   User,
+  Globe,
+  TrendingUp,
+  MapPin,
+  ChevronDown,
 } from "lucide-react-native";
 
-type DatePreset = "today" | "week" | "month";
+type DatePreset = "today" | "week" | "month" | "custom";
 
 export const PatientRecordsScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [preset, setPreset] = useState<DatePreset>("month");
+
+  // Custom date strings (YYYY-MM-DD)
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [toDate, setToDate] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Records & Pagination State
   const [patients, setPatients] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
+  // Analytics Channel Breakdown
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [walkInCount, setWalkInCount] = useState(0);
+
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
 
@@ -47,48 +71,111 @@ export const PatientRecordsScreen: React.FC = () => {
     return () => clearTimeout(handler);
   }, [search]);
 
-  const loadPatients = useCallback(async () => {
-    try {
-      const now = new Date();
-      let fromDate = new Date();
-      if (preset === "today") {
-        fromDate = now;
-      } else if (preset === "week") {
-        fromDate.setDate(now.getDate() - 7);
-      } else if (preset === "month") {
-        fromDate.setDate(now.getDate() - 30);
-      }
-
-      const from = fromDate.toISOString().split("T")[0];
-      const to = now.toISOString().split("T")[0];
-
-      const res = await doctorApi.getPatients({
-        search: debouncedSearch || undefined,
-        from,
-        to,
-        limit: 50,
-      });
-
-      if (res.data || res.patients) {
-        setPatients(res.data || res.patients || []);
-      }
-    } catch (e) {
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+  // Apply preset dates
+  const applyPreset = (p: DatePreset) => {
+    setPreset(p);
+    const now = new Date();
+    let from = new Date();
+    if (p === "today") {
+      from = now;
+    } else if (p === "week") {
+      from.setDate(now.getDate() - 7);
+    } else if (p === "month") {
+      from.setDate(now.getDate() - 30);
     }
-  }, [debouncedSearch, preset]);
+    if (p !== "custom") {
+      setFromDate(from.toISOString().split("T")[0]);
+      setToDate(now.toISOString().split("T")[0]);
+    }
+  };
+
+  const fetchRecords = useCallback(
+    async (pageToLoad: number, append: boolean = false) => {
+      if (pageToLoad === 1) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      try {
+        const [res, analyticsRes] = await Promise.all([
+          doctorApi.getPatients({
+            search: debouncedSearch || undefined,
+            from: fromDate,
+            to: toDate,
+            page: pageToLoad,
+            limit: 20,
+          }),
+          pageToLoad === 1
+            ? doctorApi.getAnalytics(30).catch(() => ({ period: { onlineBookings: 0, walkInBookings: 0 } }))
+            : Promise.resolve(null),
+        ]);
+
+        const rawList = res.data || res.patients || [];
+        const pagination = res.pagination || {};
+        const count = pagination.total ?? rawList.length;
+        const pages = pagination.pages ?? 1;
+
+        setTotalCount(count);
+        setTotalPages(pages);
+        setHasMore(pageToLoad < pages);
+        setPage(pageToLoad);
+
+        if (append) {
+          setPatients((prev) => {
+            const seen = new Set(prev.map((p) => p.id));
+            const fresh = rawList.filter((p: any) => !seen.has(p.id));
+            return [...prev, ...fresh];
+          });
+        } else {
+          setPatients(rawList);
+        }
+
+        if (analyticsRes) {
+          const aData = analyticsRes.period || analyticsRes.data?.period || {};
+          setOnlineCount(aData.onlineBookings || 0);
+          setWalkInCount(aData.walkInBookings || 0);
+        }
+      } catch (e) {
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        setIsRefreshing(false);
+      }
+    },
+    [debouncedSearch, fromDate, toDate]
+  );
 
   useEffect(() => {
-    loadPatients();
-  }, [loadPatients]);
+    fetchRecords(1, false);
+  }, [fetchRecords]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchRecords(1, false);
+  };
+
+  const handleLoadMore = () => {
+    if (!isLoading && !isLoadingMore && hasMore) {
+      fetchRecords(page + 1, true);
+    }
+  };
+
+  const chartTotal = onlineCount + walkInCount;
+  const onlinePercent = chartTotal > 0 ? Math.round((onlineCount / chartTotal) * 100) : 0;
+  const walkInPercent = chartTotal > 0 ? 100 - onlinePercent : 0;
 
   const handleExport = async () => {
     try {
-      const content = patients.map((p) => `#${p.tokenNumber} - ${p.patientName} (${p.patientPhone || "N/A"}) - ${p.status} - ${p.date || ""}`).join("\n");
+      const content = patients
+        .map(
+          (p) =>
+            `#${p.tokenNumber} - ${p.patientName || p.name} (${p.patientPhone || p.phone || "N/A"}) - ${p.status} - ${p.date || ""}`
+        )
+        .join("\n");
       await Share.share({
         title: "Patient Records Export",
-        message: `JivniCare OPD Patient Records Summary:\n\n${content}`,
+        message: `JivniCare OPD Patient Records Summary (${fromDate} to ${toDate}):\n\n${content}`,
       });
     } catch (e) {}
   };
@@ -99,111 +186,213 @@ export const PatientRecordsScreen: React.FC = () => {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Patient Records</Text>
-          <Text style={styles.subtitle}>Directory of consultations and history</Text>
+          <Text style={styles.subtitle}>Directory of past consultations and visit history</Text>
         </View>
-        <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-          <FileDown size={16} color={colors.primary} />
+        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} activeOpacity={0.8}>
+          <FileDown size={15} color={colors.primary} />
           <Text style={styles.exportText}>Export</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Input
-          placeholder="Search by patient name, phone..."
-          value={search}
-          onChangeText={setSearch}
-          leftIcon={<Search size={16} color={colors.primary} />}
-          containerStyle={{ marginBottom: 10 }}
-        />
-
-        {/* Date Filter Pills */}
-        <View style={styles.presetRow}>
-          {[
-            { key: "today", label: "Today" },
-            { key: "week", label: "This Week" },
-            { key: "month", label: "Last 30 Days" },
-          ].map((p) => (
-            <TouchableOpacity
-              key={p.key}
-              style={[styles.presetPill, preset === p.key && styles.presetPillActive]}
-              onPress={() => setPreset(p.key as DatePreset)}
-            >
-              <Text
-                style={[styles.presetText, preset === p.key && styles.presetTextActive]}
-              >
-                {p.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Records List */}
       <FlatList
         data={patients}
         keyExtractor={(item: any, index: number) => item.id || String(index)}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); loadPatients(); }} />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
-        renderItem={({ item }: { item: any }) => (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setSelectedPatient(item)}
-          >
-            <Card style={styles.patientCard}>
-              <View style={styles.cardTopRow}>
-                <View style={styles.tokenBox}>
-                  <Text style={styles.tokenNumber}>#{item.tokenNumber}</Text>
-                </View>
-                <View style={styles.patientNameBox}>
-                  <Text style={styles.patientName}>{item.patientName || "Patient"}</Text>
-                  <Text style={styles.patientMeta}>
-                    {item.type || "Online"} • {item.date || "Today"}
-                  </Text>
-                </View>
-                {item.visitCount ? (
-                  <Badge
-                    label={`Visit #${item.visitCount}`}
-                    variant="accent"
-                    size="sm"
-                  />
-                ) : null}
+        contentContainerStyle={styles.listContent}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
+        ListHeaderComponent={
+          <View>
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <Input
+                placeholder="Search patient name, phone..."
+                value={search}
+                onChangeText={setSearch}
+                leftIcon={<Search size={16} color={colors.primary} />}
+                containerStyle={{ marginBottom: 10 }}
+              />
+
+              {/* Date Filter Preset Pills */}
+              <View style={styles.presetRow}>
+                {[
+                  { key: "today", label: "Today" },
+                  { key: "week", label: "This Week" },
+                  { key: "month", label: "Last 30 Days" },
+                  { key: "custom", label: "Custom Range" },
+                ].map((p) => (
+                  <TouchableOpacity
+                    key={p.key}
+                    style={[styles.presetPill, preset === p.key && styles.presetPillActive]}
+                    onPress={() => applyPreset(p.key as DatePreset)}
+                  >
+                    <Text style={[styles.presetText, preset === p.key && styles.presetTextActive]}>
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              <View style={styles.cardBottomRow}>
-                <View style={styles.phoneRow}>
-                  <Phone size={12} color={colors.textMuted} />
-                  <Text style={styles.phoneText}>
-                    {item.patientPhone ? `+91 ${item.patientPhone}` : "No phone provided"}
+              {/* ── 2. CUSTOM FROM / TO DATE PICKERS (Matching Web) ── */}
+              <View style={styles.customDateGrid}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.dateLabel}>FROM (YYYY-MM-DD)</Text>
+                  <View style={styles.dateInputWrapper}>
+                    <Calendar size={13} color={colors.primary} />
+                    <TextInput
+                      style={styles.dateInput}
+                      value={fromDate}
+                      onChangeText={(v) => {
+                        setFromDate(v);
+                        setPreset("custom");
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.dateLabel}>TO (YYYY-MM-DD)</Text>
+                  <View style={styles.dateInputWrapper}>
+                    <Calendar size={13} color={colors.primary} />
+                    <TextInput
+                      style={styles.dateInput}
+                      value={toDate}
+                      onChangeText={(v) => {
+                        setToDate(v);
+                        setPreset("custom");
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* ── 1. CHANNEL DISTRIBUTION BREAKDOWN STRIP (Matching Web) ── */}
+            <Card style={styles.channelStrip}>
+              <View style={styles.channelHeaderRow}>
+                <View>
+                  <Text style={styles.channelTotalCount}>
+                    {totalCount} total record{totalCount === 1 ? "" : "s"}
+                  </Text>
+                  <Text style={styles.channelTotalSub}>
+                    Showing {patients.length} loaded
                   </Text>
                 </View>
-                <Badge
-                  label={item.status || "COMPLETED"}
-                  variant={item.status === "COMPLETED" ? "success" : "neutral"}
-                  size="sm"
-                />
+
+                {/* Channel Breakdown Pills */}
+                <View style={styles.channelPillsGroup}>
+                  <View style={styles.onlinePill}>
+                    <Globe size={11} color={colors.primary} />
+                    <Text style={styles.onlinePillText}>
+                      Online {onlinePercent}% ({onlineCount})
+                    </Text>
+                  </View>
+
+                  <View style={styles.walkInPill}>
+                    <Users size={11} color={colors.secondary} />
+                    <Text style={styles.walkInPillText}>
+                      Walk-in {walkInPercent}% ({walkInCount})
+                    </Text>
+                  </View>
+                </View>
               </View>
             </Card>
-          </TouchableOpacity>
-        )}
+          </View>
+        }
+        renderItem={({ item }: { item: any }) => {
+          const isEmergency = item.isEmergency || item.tokenNumber >= 9000;
+          const displayName = item.patientName || item.name || "Patient";
+          const displayPhone = item.patientPhone || item.phone || "";
+          const isOnlineSource = item.type === "ONLINE" || item.source === "ONLINE";
+
+          return (
+            <TouchableOpacity
+              style={styles.patientCard}
+              onPress={() => setSelectedPatient(item)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.cardHeader}>
+                <View style={styles.tokenBox}>
+                  <Text style={[styles.tokenText, isEmergency && { color: colors.destructive }]}>
+                    #{item.tokenNumber}
+                  </Text>
+                </View>
+
+                <View style={styles.badgeRow}>
+                  <Badge
+                    label={isOnlineSource ? "Online" : "Walk-in"}
+                    variant="neutral"
+                    size="sm"
+                  />
+                  <Badge
+                    label={item.status || "COMPLETED"}
+                    variant={item.status === "COMPLETED" ? "neutral" : "success"}
+                    size="sm"
+                  />
+                  {isEmergency && (
+                    <Badge label="Emergency" variant="destructive" size="sm" />
+                  )}
+                </View>
+
+                <Text style={styles.dateText}>
+                  {item.date || new Date(item.createdAt || Date.now()).toLocaleDateString([], { month: "short", day: "numeric" })}
+                </Text>
+              </View>
+
+              <View style={styles.patientBody}>
+                <Text style={styles.patientName}>{displayName}</Text>
+                <Text style={styles.patientMeta}>
+                  {item.condition || item.symptoms || "General OPD"}
+                  {item.age ? ` • ${item.age} yrs` : ""}
+                  {item.gender ? ` • ${item.gender}` : ""}
+                </Text>
+                {Boolean(displayPhone) && (
+                  <Text style={styles.phoneText}>+91 {displayPhone}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        ListFooterComponent={
+          isLoadingMore ? (
+            <View style={styles.loadingMoreBox}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.loadingMoreText}>Loading more records...</Text>
+            </View>
+          ) : hasMore ? (
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={handleLoadMore}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.loadMoreBtnText}>Load More Records</Text>
+              <ChevronDown size={14} color={colors.primary} />
+            </TouchableOpacity>
+          ) : patients.length > 0 ? (
+            <View style={styles.endOfListBox}>
+              <Text style={styles.endOfListText}>All {totalCount} records loaded</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           !isLoading ? (
-            <View style={styles.emptyState}>
+            <View style={styles.emptyContainer}>
               <Users size={36} color={colors.textMuted} />
               <Text style={styles.emptyTitle}>No Records Found</Text>
               <Text style={styles.emptySub}>
-                {search ? "No patients match your search query." : "No consultations recorded in this date range."}
+                {debouncedSearch
+                  ? "No matching patients match your search query."
+                  : "No visits recorded in this date window."}
               </Text>
             </View>
-          ) : (
-            <View style={{ padding: 20 }}>
-              <Skeleton height={70} style={{ marginBottom: 10 }} />
-              <Skeleton height={70} style={{ marginBottom: 10 }} />
-            </View>
-          )
+          ) : null
         }
-        contentContainerStyle={styles.listContent}
       />
 
       {/* Patient Detail Modal */}
@@ -211,43 +400,44 @@ export const PatientRecordsScreen: React.FC = () => {
         <Modal
           visible={Boolean(selectedPatient)}
           onClose={() => setSelectedPatient(null)}
-          title={selectedPatient.patientName || "Patient Profile"}
-          subtitle={`Token #${selectedPatient.tokenNumber} • Consultation Summary`}
-          footer={
-            <Button
-              title="Close Details"
-              variant="outline"
-              size="md"
-              onPress={() => setSelectedPatient(null)}
-              style={{ width: "100%" }}
-            />
-          }
+          title={`Token #${selectedPatient.tokenNumber}`}
+          subtitle="Full visit details"
         >
-          <View style={styles.detailSection}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Mobile Phone</Text>
-              <Text style={styles.detailValue}>
-                {selectedPatient.patientPhone ? `+91 ${selectedPatient.patientPhone}` : "N/A"}
+          <View style={styles.modalContent}>
+            <View style={styles.modalRow}>
+              <Text style={styles.modalLabel}>Patient Name</Text>
+              <Text style={styles.modalValue}>
+                {selectedPatient.patientName || selectedPatient.name || "Patient"}
               </Text>
             </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Consultation Date</Text>
-              <Text style={styles.detailValue}>{selectedPatient.date || "N/A"}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Registration Type</Text>
-              <Text style={styles.detailValue}>{selectedPatient.type || "Online Booking"}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Consultation Status</Text>
-              <Text style={styles.detailValue}>{selectedPatient.status || "COMPLETED"}</Text>
-            </View>
-            {selectedPatient.address ? (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Patient Address</Text>
-                <Text style={styles.detailValue}>{selectedPatient.address}</Text>
+
+            {Boolean(selectedPatient.patientPhone || selectedPatient.phone) && (
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>Mobile Number</Text>
+                <Text style={styles.modalValue}>
+                  +91 {selectedPatient.patientPhone || selectedPatient.phone}
+                </Text>
               </View>
-            ) : null}
+            )}
+
+            <View style={styles.modalRow}>
+              <Text style={styles.modalLabel}>Booking Type</Text>
+              <Text style={styles.modalValue}>
+                {selectedPatient.type || selectedPatient.source || "Walk-in"}
+              </Text>
+            </View>
+
+            <View style={styles.modalRow}>
+              <Text style={styles.modalLabel}>Status</Text>
+              <Text style={styles.modalValue}>{selectedPatient.status || "COMPLETED"}</Text>
+            </View>
+
+            <View style={styles.modalRow}>
+              <Text style={styles.modalLabel}>Chief Complaint / Symptoms</Text>
+              <Text style={styles.modalValue}>
+                {selectedPatient.condition || selectedPatient.symptoms || "General"}
+              </Text>
+            </View>
           </View>
         </Modal>
       )}
@@ -268,6 +458,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
+    backgroundColor: colors.surface,
   },
   title: {
     ...typography.titleMedium,
@@ -283,34 +474,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.primaryLight,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radius.md,
+    backgroundColor: colors.accent,
   },
   exportText: {
     ...typography.caption,
     fontSize: 11,
     color: colors.primary,
-    fontWeight: "800",
+    fontWeight: "700",
     textTransform: "none",
   },
   searchContainer: {
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   presetRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
+    marginBottom: 10,
   },
   presetPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.full,
-    backgroundColor: colors.mutedBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
   },
   presetPillActive: {
     backgroundColor: colors.primary,
@@ -321,71 +513,213 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     textTransform: "none",
-    fontWeight: "700",
+    fontWeight: "600",
   },
   presetTextActive: {
     color: "#FFFFFF",
+    fontWeight: "700",
   },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 130,
+  customDateGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 6,
   },
-  patientCard: {
-    marginBottom: 10,
-    padding: 14,
-    borderRadius: radius.xl,
+  dateLabel: {
+    ...typography.caption,
+    fontSize: 9,
+    color: colors.textMuted,
+    fontWeight: "700",
+    marginBottom: 3,
   },
-  cardTopRow: {
+  dateInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    gap: 6,
+    height: 36,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
   },
-  tokenBox: {
-    marginRight: 10,
-  },
-  tokenNumber: {
-    ...typography.titleSmall,
-    color: colors.primary,
-    fontWeight: "900",
-  },
-  patientNameBox: {
+  dateInput: {
     flex: 1,
-  },
-  patientName: {
-    ...typography.titleSmall,
-    fontSize: 14,
+    fontSize: 11,
+    fontWeight: "600",
     color: colors.textPrimary,
+    padding: 0,
   },
-  patientMeta: {
-    ...typography.caption,
-    fontSize: 10,
-    color: colors.textMuted,
-    textTransform: "none",
+  channelStrip: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    ...shadows.soft,
   },
-  cardBottomRow: {
+  channelHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
   },
-  phoneRow: {
+  channelTotalCount: {
+    ...typography.titleSmall,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  channelTotalSub: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+    textTransform: "none",
+  },
+  channelPillsGroup: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  onlinePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.full,
   },
-  phoneText: {
+  onlinePillText: {
+    ...typography.caption,
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.primary,
+    textTransform: "none",
+  },
+  walkInPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  walkInPillText: {
+    ...typography.caption,
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.secondary,
+    textTransform: "none",
+  },
+  listContent: {
+    paddingBottom: 130,
+  },
+  patientCard: {
+    marginHorizontal: 20,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    ...shadows.soft,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  tokenBox: {
+    marginRight: 8,
+  },
+  tokenText: {
+    ...typography.titleSmall,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  dateText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  patientBody: {
+    marginTop: 2,
+  },
+  patientName: {
+    ...typography.titleSmall,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  patientMeta: {
     ...typography.caption,
     fontSize: 11,
     color: colors.textSecondary,
+    marginTop: 2,
     textTransform: "none",
   },
-  emptyState: {
+  phoneText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+    textTransform: "none",
+  },
+  loadingMoreBox: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 50,
+    gap: 8,
+    paddingVertical: 14,
+  },
+  loadingMoreText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  loadMoreBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginHorizontal: 20,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accent,
+  },
+  loadMoreBtnText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.primary,
+    textTransform: "none",
+  },
+  endOfListBox: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  endOfListText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: "none",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 24,
   },
   emptyTitle: {
     ...typography.titleSmall,
@@ -398,24 +732,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
-  detailSection: {
+  modalContent: {
     gap: 12,
-    paddingVertical: 8,
   },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
+  modalRow: {
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
+    paddingBottom: 8,
   },
-  detailLabel: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  detailValue: {
-    ...typography.bodySmall,
-    color: colors.navy,
+  modalLabel: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
     fontWeight: "700",
+    textTransform: "none",
+  },
+  modalValue: {
+    ...typography.bodySmall,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginTop: 2,
   },
 });

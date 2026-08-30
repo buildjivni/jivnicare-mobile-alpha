@@ -215,6 +215,13 @@ export const doctorApi = {
     return apiClient("/api/doctor/settings");
   },
 
+  updateWeeklySchedule: async (weeklySchedule: Record<string, { isOpen: boolean; start: string; end: string; maxPatients?: number | string }>) => {
+    return apiClient("/api/doctor/availability/weekly-schedule", {
+      method: "PUT",
+      body: JSON.stringify({ weeklySchedule }),
+    });
+  },
+
   updateSettings: async (settings: Partial<DoctorSettings>) => {
     return apiClient("/api/doctor/settings", {
       method: "POST",
