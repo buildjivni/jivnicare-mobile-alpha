@@ -224,7 +224,7 @@ export const doctorApi = {
 
   updateSettings: async (settings: Partial<DoctorSettings>) => {
     return apiClient("/api/doctor/settings", {
-      method: "POST",
+      method: "PUT",
       body: JSON.stringify(settings),
     });
   },
