@@ -56,6 +56,7 @@ export const SettingsScreen: React.FC = () => {
   // 3. Operations Form State
   const [fee, setFee] = useState(settings?.fee || "300");
   const [consultTime, setConsultTime] = useState(settings?.averageConsultationTime || "15");
+  const [bookingWindowStart, setBookingWindowStart] = useState(settings?.bookingWindowStart || "08:00");
   const [emergencySlots, setEmergencySlots] = useState(settings?.emergencySlots || "2");
   const [emergencyFee, setEmergencyFee] = useState(settings?.emergencyFee || "500");
   const [followUpDays, setFollowUpDays] = useState(settings?.followUpDays || "7");
@@ -102,6 +103,7 @@ export const SettingsScreen: React.FC = () => {
     if (settings) {
       setFee(settings.fee);
       setConsultTime(settings.averageConsultationTime);
+      setBookingWindowStart(settings.bookingWindowStart || "08:00");
       setEmergencySlots(settings.emergencySlots);
       setEmergencyFee(settings.emergencyFee);
       setFollowUpDays(settings.followUpDays);
@@ -162,6 +164,7 @@ export const SettingsScreen: React.FC = () => {
       await doctorApi.updateSettings({
         fee,
         averageConsultationTime: consultTime,
+        bookingWindowStart,
         emergencySlots,
         emergencyFee,
         followUpDays,
@@ -420,6 +423,7 @@ export const SettingsScreen: React.FC = () => {
             <Card style={styles.cardSection}>
               <Text style={styles.sectionHeader}>Consultation Pricing & Timings</Text>
 
+              {/* Consultation Fee */}
               <Input
                 label="Standard Consultation Fee (₹ INR)"
                 value={fee}
@@ -429,6 +433,7 @@ export const SettingsScreen: React.FC = () => {
                 containerStyle={{ marginBottom: 14 }}
               />
 
+              {/* Average Consultation Duration */}
               <Text style={styles.fieldLabel}>Average Consultation Duration</Text>
               <View style={styles.durationRow}>
                 {["10", "15", "20", "30"].map((m) => (
@@ -444,6 +449,17 @@ export const SettingsScreen: React.FC = () => {
                 ))}
               </View>
 
+              {/* Online Booking Start Time (Clinic-wide Opening / Booking Window) */}
+              <Input
+                label="Online Booking Start Time (HH:MM)"
+                value={bookingWindowStart}
+                onChangeText={setBookingWindowStart}
+                placeholder="08:00"
+                leftIcon={<Clock size={16} color={colors.primary} />}
+                containerStyle={{ marginBottom: 14 }}
+              />
+
+              {/* Emergency Consultation Slots */}
               <Input
                 label="Emergency Consultation Slots"
                 value={emergencySlots}
@@ -452,6 +468,7 @@ export const SettingsScreen: React.FC = () => {
                 containerStyle={{ marginBottom: 14 }}
               />
 
+              {/* Emergency Consultation Fee */}
               <Input
                 label="Emergency Consultation Fee (₹ INR)"
                 value={emergencyFee}
@@ -460,6 +477,7 @@ export const SettingsScreen: React.FC = () => {
                 containerStyle={{ marginBottom: 14 }}
               />
 
+              {/* Free Follow-up Window */}
               <Input
                 label="Free Follow-up Window (Days)"
                 value={followUpDays}
@@ -468,6 +486,13 @@ export const SettingsScreen: React.FC = () => {
                 placeholder="e.g. 7"
                 containerStyle={{ marginBottom: 14 }}
               />
+
+              {/* Informational Notice (Matching Web) */}
+              <View style={styles.opNoticeBox}>
+                <Text style={styles.opNoticeText}>
+                  Note: Changes to fees, consultation times, or emergency slots will apply to new bookings. Daily OPD capacity is set per day under Weekly Operating Hours.
+                </Text>
+              </View>
 
               <Button
                 title="Save Operational Controls"
@@ -947,6 +972,18 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: 8,
+    textTransform: "none",
+  },
+  opNoticeBox: {
+    backgroundColor: colors.accent,
+    padding: 10,
+    borderRadius: radius.md,
+    marginBottom: 14,
+  },
+  opNoticeText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textSecondary,
     textTransform: "none",
   },
   saveBtn: {
