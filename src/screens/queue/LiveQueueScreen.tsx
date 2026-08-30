@@ -21,8 +21,6 @@ import { UndoToastBar } from "./components/UndoToastBar";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
-import { Badge } from "../../components/ui/Badge";
-import { Skeleton } from "../../components/ui/Skeleton";
 import { doctorApi } from "../../api/doctor";
 import { QueueTokenItem, QueueStats } from "../../types/queue";
 import { ClinicAvailabilityStatus } from "../../types/doctor";
@@ -30,8 +28,11 @@ import {
   Search,
   UserPlus,
   CalendarX,
-  RefreshCw,
-  AlertCircle,
+  UserCheck,
+  CheckCircle2,
+  UserX,
+  PauseCircle,
+  PlayCircle,
   Users,
 } from "lucide-react-native";
 
@@ -46,6 +47,7 @@ export const LiveQueueScreen: React.FC = () => {
     emergencyCount: 0,
     heldCount: 0,
     noShowCount: 0,
+    serviceType: "OPD_ONLY",
   });
   const [clinicStatus, setClinicStatus] = useState<ClinicAvailabilityStatus>("AVAILABLE");
   const [isLoading, setIsLoading] = useState(true);
@@ -73,6 +75,7 @@ export const LiveQueueScreen: React.FC = () => {
       if (res.success && res.tokens) {
         const avgTime = res.doctor?.averageConsultationTime || 15;
         const currentActive = res.stats?.currentActive || 0;
+        const serviceType = (res.doctor as any)?.serviceType || res.stats?.serviceType || "OPD_ONLY";
 
         let emergencyCount = 0;
         let heldCount = 0;
@@ -126,6 +129,7 @@ export const LiveQueueScreen: React.FC = () => {
         setTokens(formatted);
         setStats({
           ...res.stats,
+          serviceType,
           emergencyCount,
           heldCount,
           noShowCount,
@@ -152,7 +156,7 @@ export const LiveQueueScreen: React.FC = () => {
     fetchQueueData(false);
   };
 
-  // Derive Active Patient and Up Next Patient
+  // Derive Active Patient, Up Next Patient, and Queue Counts
   const currentPatient = useMemo(() => {
     return tokens.find((t) => t.status === "In-Person") || null;
   }, [tokens]);
@@ -160,6 +164,13 @@ export const LiveQueueScreen: React.FC = () => {
   const upNextPatient = useMemo(() => {
     return tokens.find((t) => t.status === "Waiting") || null;
   }, [tokens]);
+
+  const waitingCount = stats.waiting || 0;
+  const hasHeldPatient = useMemo(() => {
+    return tokens.some((t) => t.status === "Held");
+  }, [tokens]);
+
+  const isEmergencyAndOpd = stats.serviceType === "EMERGENCY_AND_OPD";
 
   // Filtered Tokens for List
   const filteredTokens = useMemo(() => {
@@ -198,6 +209,19 @@ export const LiveQueueScreen: React.FC = () => {
     }
   };
 
+  const handleFinishQueue = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await doctorApi.finishConsultation(currentPatient?.id || "");
+      await fetchQueueData(false);
+    } catch (e: any) {
+      Alert.alert("Queue Action", e.message || "Failed to finish queue");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleUndoNext = async (undoToken: string) => {
     setIsProcessing(true);
     try {
@@ -223,10 +247,12 @@ export const LiveQueueScreen: React.FC = () => {
     }
   };
 
-  const handleHoldPatient = async (tokenId: string) => {
+  const handleHoldPatient = async (tokenId?: string) => {
+    const targetId = tokenId || currentPatient?.id;
+    if (!targetId) return;
     setIsProcessing(true);
     try {
-      await doctorApi.holdPatient(tokenId);
+      await doctorApi.holdPatient(targetId);
       await fetchQueueData(false);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to place on hold");
@@ -235,10 +261,12 @@ export const LiveQueueScreen: React.FC = () => {
     }
   };
 
-  const handleResumePatient = async (tokenId: string) => {
+  const handleResumePatient = async (tokenId?: string) => {
+    const targetId = tokenId || tokens.find((t) => t.status === "Held")?.id;
+    if (!targetId) return;
     setIsProcessing(true);
     try {
-      await doctorApi.resumePatient(tokenId);
+      await doctorApi.resumePatient(targetId);
       await fetchQueueData(false);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to resume patient");
@@ -247,10 +275,12 @@ export const LiveQueueScreen: React.FC = () => {
     }
   };
 
-  const handleNoShow = async (tokenId: string) => {
+  const handleNoShow = async (tokenId?: string) => {
+    const targetId = tokenId || currentPatient?.id;
+    if (!targetId) return;
     setIsProcessing(true);
     try {
-      await doctorApi.markNoShow(tokenId);
+      await doctorApi.markNoShow(targetId);
       await fetchQueueData(false);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to mark no-show");
@@ -287,14 +317,6 @@ export const LiveQueueScreen: React.FC = () => {
           >
             <CalendarX size={18} color={colors.navy} />
           </TouchableOpacity>
-
-          <Button
-            title="+ Walk-In"
-            variant="primary"
-            size="sm"
-            onPress={() => setIsWalkInVisible(true)}
-            icon={<UserPlus size={14} color="#FFFFFF" />}
-          />
         </View>
       </View>
 
@@ -304,13 +326,116 @@ export const LiveQueueScreen: React.FC = () => {
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View>
-            {/* Stat Cards */}
-            <QueueStatCards stats={stats} />
+            {/* Stat Cards + Health Banner */}
+            <QueueStatCards
+              stats={stats}
+              metricType={isEmergencyAndOpd ? "EMERGENCY_QUEUE" : "AVG_WAIT"}
+              selectedFilter={selectedFilter}
+              onSelectFilter={setSelectedFilter}
+            />
+
+            {/* ── UNIFIED 4-CTA ACTION BAR (Matching Web) ── */}
+            <View style={styles.actionDeckContainer}>
+              <View style={styles.actionGridRow}>
+                {/* Button A: Call Next / Finish Queue */}
+                {waitingCount > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, styles.callNextBtn]}
+                    onPress={handleAdvanceNextPatient}
+                    disabled={isProcessing}
+                    activeOpacity={0.8}
+                  >
+                    <UserCheck size={16} color="#FFFFFF" />
+                    <Text style={styles.primaryActionText}>Call Next Patient</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, styles.finishQueueBtn]}
+                    onPress={handleFinishQueue}
+                    disabled={isProcessing}
+                    activeOpacity={0.8}
+                  >
+                    <CheckCircle2 size={16} color="#FFFFFF" />
+                    <Text style={styles.primaryActionText}>Finish Queue</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Button B: Add Walk-in */}
+                <TouchableOpacity
+                  style={[styles.primaryActionBtn, styles.addWalkInBtn]}
+                  onPress={() => setIsWalkInVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <UserPlus size={16} color="#FFFFFF" />
+                  <Text style={styles.primaryActionText}>Add Walk-in</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.actionGridRow}>
+                {/* Button C: Mark No-show */}
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryActionBtn,
+                    !currentPatient && styles.disabledActionBtn,
+                  ]}
+                  onPress={() => handleNoShow()}
+                  disabled={isProcessing || !currentPatient}
+                  activeOpacity={0.8}
+                >
+                  <UserX size={15} color={currentPatient ? colors.textSecondary : colors.textMuted} />
+                  <Text
+                    style={[
+                      styles.secondaryActionText,
+                      !currentPatient && { color: colors.textMuted },
+                    ]}
+                  >
+                    Mark No-show
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Button D: Hold / Resume Queue */}
+                {hasHeldPatient ? (
+                  <TouchableOpacity
+                    style={[styles.secondaryActionBtn, styles.resumeQueueBtn]}
+                    onPress={() => handleResumePatient()}
+                    disabled={isProcessing}
+                    activeOpacity={0.8}
+                  >
+                    <PlayCircle size={15} color="#FFFFFF" />
+                    <Text style={[styles.secondaryActionText, { color: "#FFFFFF" }]}>
+                      Resume Queue
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryActionBtn,
+                      styles.holdPatientBtn,
+                      !currentPatient && styles.disabledActionBtn,
+                    ]}
+                    onPress={() => handleHoldPatient()}
+                    disabled={isProcessing || !currentPatient}
+                    activeOpacity={0.8}
+                  >
+                    <PauseCircle size={15} color={currentPatient ? "#B45309" : colors.textMuted} />
+                    <Text
+                      style={[
+                        styles.secondaryActionText,
+                        { color: currentPatient ? "#92400E" : colors.textMuted },
+                      ]}
+                    >
+                      Hold Patient
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
 
             {/* Up Next Calling Deck */}
-            <View style={{ marginTop: 14 }}>
+            <View style={{ marginTop: 6 }}>
               <UpNextCallingDeck
                 currentPatient={currentPatient}
                 upNextPatient={upNextPatient}
@@ -350,10 +475,10 @@ export const LiveQueueScreen: React.FC = () => {
             </View>
           </View>
         }
-        renderItem={({ item }: { item: QueueTokenItem }) => (
+        renderItem={({ item }) => (
           <PatientCardItem
             patient={item}
-            onCall={handleAdvanceNextPatient}
+            onCall={(id) => doctorApi.callPatient(id).then(() => fetchQueueData(false))}
             onHold={handleHoldPatient}
             onResume={handleResumePatient}
             onNoShow={handleNoShow}
@@ -364,36 +489,24 @@ export const LiveQueueScreen: React.FC = () => {
           !isLoading ? (
             <View style={styles.emptyList}>
               <Users size={36} color={colors.textMuted} />
-              <Text style={styles.emptyListTitle}>No Patients in Selected View</Text>
+              <Text style={styles.emptyListTitle}>No Patients Found</Text>
               <Text style={styles.emptyListSub}>
-                {searchQuery ? "Try searching with a different name or number." : "Patients will appear here once added to queue."}
+                {searchQuery
+                  ? "No matching patients match your search criteria."
+                  : "Queue is empty for this filter selection."}
               </Text>
             </View>
-          ) : (
-            <View style={{ padding: 20 }}>
-              <Skeleton height={80} style={{ marginBottom: 10 }} />
-              <Skeleton height={80} style={{ marginBottom: 10 }} />
-            </View>
-          )
+          ) : null
         }
-        contentContainerStyle={styles.listContent}
-      />
-
-      {/* Undo Toast */}
-      <UndoToastBar
-        visible={undoToast.visible}
-        undoToken={undoToast.token}
-        patientName={undoToast.patientName}
-        onUndo={handleUndoNext}
-        onDismiss={() => setUndoToast({ visible: false, token: null, patientName: "" })}
       />
 
       {/* Modals */}
       <WalkInPatientModal
         visible={isWalkInVisible}
         onClose={() => setIsWalkInVisible(false)}
-        onSubmit={async (data) => {
-          await doctorApi.registerWalkIn(data);
+        showEmergencyToggle={isEmergencyAndOpd}
+        onSubmit={async (walkInData) => {
+          await doctorApi.registerWalkIn(walkInData);
           await fetchQueueData(false);
         }}
       />
@@ -402,9 +515,14 @@ export const LiveQueueScreen: React.FC = () => {
         visible={isStatusModalVisible}
         currentStatus={clinicStatus}
         onClose={() => setIsStatusModalVisible(false)}
-        onSubmit={async (status, reason, duration) => {
-          await doctorApi.updateClinicStatus({ status, reason, durationMinutes: duration });
-          setClinicStatus(status);
+        onSubmit={async (newStatus, reason, duration) => {
+          await doctorApi.updateClinicStatus({
+            status: newStatus,
+            reason,
+            durationMinutes: duration,
+          });
+          setClinicStatus(newStatus);
+          await fetchQueueData(false);
         }}
       />
 
@@ -416,6 +534,15 @@ export const LiveQueueScreen: React.FC = () => {
           await fetchQueueData(false);
         }}
       />
+
+      {/* Undo Calling Action Bar */}
+      <UndoToastBar
+        visible={undoToast.visible}
+        undoToken={undoToast.token}
+        patientName={undoToast.patientName}
+        onUndo={handleUndoNext}
+        onDismiss={() => setUndoToast({ visible: false, token: null, patientName: "" })}
+      />
     </ScreenContainer>
   );
 };
@@ -423,7 +550,7 @@ export const LiveQueueScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.mutedBackground,
   },
   headerBar: {
     flexDirection: "row",
@@ -456,6 +583,77 @@ const styles = StyleSheet.create({
     backgroundColor: colors.mutedBackground,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionDeckContainer: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: radius["2xl"],
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: 8,
+    ...shadows.soft,
+  },
+  actionGridRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  primaryActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 44,
+    borderRadius: radius.xl,
+    ...shadows.soft,
+  },
+  callNextBtn: {
+    backgroundColor: "#059669",
+  },
+  finishQueueBtn: {
+    backgroundColor: colors.navy,
+  },
+  addWalkInBtn: {
+    backgroundColor: colors.primary,
+  },
+  primaryActionText: {
+    ...typography.titleSmall,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 40,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+  },
+  holdPatientBtn: {
+    borderColor: "#FDE68A",
+    backgroundColor: "#FFFBEB",
+  },
+  resumeQueueBtn: {
+    backgroundColor: "#D97706",
+    borderColor: "#D97706",
+  },
+  disabledActionBtn: {
+    opacity: 0.5,
+    backgroundColor: colors.mutedBackground,
+  },
+  secondaryActionText: {
+    ...typography.titleSmall,
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textSecondary,
   },
   searchSection: {
     paddingHorizontal: 20,

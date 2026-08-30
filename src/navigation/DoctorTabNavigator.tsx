@@ -68,6 +68,8 @@ export const DoctorTabNavigator: React.FC = () => {
             onNavigateToQueue={() => setActiveTab("QUEUE")}
             onNavigateToRecords={() => setActiveTab("PATIENTS")}
             onNavigateToSettings={() => setActiveTab("SETTINGS")}
+            onNavigateToBilling={() => setActiveTab("BILLING")}
+            onNavigateToPerformance={() => setActiveTab("PERFORMANCE")}
           />
         )}
         {activeTab === "PATIENTS" && <PatientRecordsScreen />}

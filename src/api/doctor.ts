@@ -189,6 +189,10 @@ export const doctorApi = {
     return apiClient(`/api/doctor/analytics?period=${period}`);
   },
 
+  getWaitlist: async () => {
+    return apiClient("/api/doctor/waitlist");
+  },
+
   // ── Patients & Records ───────────────────────────────────────────
   getPatients: async (params: {
     search?: string;

@@ -1,20 +1,16 @@
-import React from "react";
+﻿import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { colors, typography, radius, shadows } from "../../../theme";
 import { QueueTokenItem } from "../../../types/queue";
 import { Card } from "../../../components/ui/Card";
 import { Badge } from "../../../components/ui/Badge";
-import { Button } from "../../../components/ui/Button";
+import { PaymentStatusCell } from "./PaymentStatusCell";
 import {
   PhoneCall,
   Clock,
-  CheckCircle2,
-  AlertCircle,
+  MapPin,
   PauseCircle,
   PlayCircle,
-  UserX,
-  CreditCard,
-  Banknote,
 } from "lucide-react-native";
 
 export interface PatientCardItemProps {
@@ -23,7 +19,7 @@ export interface PatientCardItemProps {
   onHold: (tokenId: string) => void;
   onResume: (tokenId: string) => void;
   onNoShow: (tokenId: string) => void;
-  onCollectPayment: (tokenId: string, mode: "CASH" | "ONLINE") => void;
+  onCollectPayment: (tokenId: string, mode: "CASH" | "ONLINE") => Promise<void>;
 }
 
 export const PatientCardItem: React.FC<PatientCardItemProps> = ({
@@ -31,7 +27,6 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
   onCall,
   onHold,
   onResume,
-  onNoShow,
   onCollectPayment,
 }) => {
   const isEmergency = patient.priority === "Emergency";
@@ -61,7 +56,7 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
       <View style={styles.topRow}>
         <View style={styles.tokenBox}>
           <Text style={[styles.tokenNumber, isEmergency && { color: colors.destructive }]}>
-            #{patient.token}
+            #{String(patient.tokenNumber || patient.token).padStart(2, "0")}
           </Text>
         </View>
 
@@ -93,11 +88,20 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
       <View style={styles.patientInfoRow}>
         <View style={styles.nameBlock}>
           <Text style={styles.nameText}>{patient.name}</Text>
-          <Text style={styles.metaText}>
-            {patient.condition || "General"}
-            {patient.age ? ` • ${patient.age} yrs` : ""}
-            {patient.location && patient.location !== "N/A" ? ` • ${patient.location}` : ""}
-          </Text>
+          <View style={styles.metaRow}>
+            {patient.location && patient.location !== "N/A" && patient.location !== "Local" ? (
+              <View style={styles.locationChip}>
+                <MapPin size={11} color={colors.textSecondary} />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {patient.location}
+                </Text>
+              </View>
+            ) : null}
+            <Text style={styles.metaText}>
+              {patient.condition || "General"}
+              {patient.age ? ` • ${patient.age} yrs` : ""}
+            </Text>
+          </View>
           {Boolean(patient.phone) && (
             <Text style={styles.phoneText}>+91 {patient.phone}</Text>
           )}
@@ -106,34 +110,15 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
 
       {/* Payment & Action Controls */}
       <View style={styles.bottomActionRow}>
-        {/* Payment Cell */}
-        <View style={styles.paymentCell}>
-          {patient.paymentVerified ? (
-            <View style={styles.paidBadge}>
-              <CheckCircle2 size={12} color={colors.secondary} />
-              <Text style={styles.paidText}>
-                Paid ({patient.paymentMode || "Verified"})
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.collectButtonGroup}>
-              <TouchableOpacity
-                style={styles.collectBtn}
-                onPress={() => onCollectPayment(patient.id, "CASH")}
-              >
-                <Banknote size={12} color={colors.navy} />
-                <Text style={styles.collectBtnText}>Cash</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.collectBtn}
-                onPress={() => onCollectPayment(patient.id, "ONLINE")}
-              >
-                <CreditCard size={12} color={colors.primary} />
-                <Text style={[styles.collectBtnText, { color: colors.primary }]}>Online</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {/* Functional Payment Cell */}
+        <PaymentStatusCell
+          tokenId={patient.id}
+          paymentVerified={Boolean(patient.paymentVerified)}
+          paymentMode={patient.paymentMode as any}
+          feeWaived={Boolean(patient.isFollowUpWaived)}
+          onCollect={onCollectPayment}
+          compact
+        />
 
         {/* Quick Contextual Actions */}
         <View style={styles.actionButtons}>
@@ -142,7 +127,7 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
               style={[styles.miniActionBtn, { backgroundColor: colors.primaryLight }]}
               onPress={() => onCall(patient.id)}
             >
-              <PhoneCall size={14} color={colors.primary} />
+              <PhoneCall size={13} color={colors.primary} />
               <Text style={[styles.miniActionText, { color: colors.primary }]}>Call</Text>
             </TouchableOpacity>
           )}
@@ -152,7 +137,7 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
               style={[styles.miniActionBtn, { backgroundColor: colors.successBg }]}
               onPress={() => onResume(patient.id)}
             >
-              <PlayCircle size={14} color={colors.success} />
+              <PlayCircle size={13} color={colors.success} />
               <Text style={[styles.miniActionText, { color: colors.success }]}>Resume</Text>
             </TouchableOpacity>
           )}
@@ -162,7 +147,7 @@ export const PatientCardItem: React.FC<PatientCardItemProps> = ({
               style={[styles.miniActionBtn, { backgroundColor: colors.warningBg }]}
               onPress={() => onHold(patient.id)}
             >
-              <PauseCircle size={14} color={colors.warning} />
+              <PauseCircle size={13} color={colors.warning} />
               <Text style={[styles.miniActionText, { color: colors.warning }]}>Hold</Text>
             </TouchableOpacity>
           )}
@@ -197,9 +182,10 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   tokenNumber: {
-    ...typography.titleSmall,
-    color: colors.navy,
-    fontWeight: "900",
+    ...typography.titleMedium,
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.primary,
   },
   badgeRow: {
     flexDirection: "row",
@@ -213,8 +199,10 @@ const styles = StyleSheet.create({
     gap: 3,
     backgroundColor: colors.mutedBackground,
     paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   waitText: {
     ...typography.caption,
@@ -222,6 +210,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   patientInfoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginBottom: 10,
   },
   nameBlock: {
@@ -229,18 +219,42 @@ const styles = StyleSheet.create({
   },
   nameText: {
     ...typography.titleSmall,
-    fontSize: 15,
+    fontSize: 14,
     color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 3,
+    flexWrap: "wrap",
+  },
+  locationChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.mutedBackground,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: radius.full,
+  },
+  locationText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textSecondary,
+    maxWidth: 120,
+    textTransform: "none",
   },
   metaText: {
-    ...typography.bodySmall,
+    ...typography.caption,
+    fontSize: 11,
     color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
+    textTransform: "none",
   },
   phoneText: {
     ...typography.caption,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
     marginTop: 2,
     textTransform: "none",
@@ -249,50 +263,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
-  paymentCell: {
-    flex: 1,
-  },
-  paidBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  paidText: {
-    ...typography.caption,
-    fontSize: 10,
-    color: colors.secondary,
-    fontWeight: "800",
-  },
-  collectButtonGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  collectBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    backgroundColor: colors.mutedBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  collectBtnText: {
-    ...typography.caption,
-    fontSize: 10,
-    color: colors.navy,
-    fontWeight: "700",
-    textTransform: "none",
-  },
   actionButtons: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 6,
   },
   miniActionBtn: {
@@ -301,12 +277,11 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: radius.full,
+    borderRadius: radius.lg,
   },
   miniActionText: {
     ...typography.caption,
     fontSize: 11,
-    fontWeight: "800",
-    textTransform: "none",
+    fontWeight: "700",
   },
 });
