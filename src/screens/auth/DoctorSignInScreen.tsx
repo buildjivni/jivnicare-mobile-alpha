@@ -54,8 +54,8 @@ export const DoctorSignInScreen: React.FC<DoctorSignInScreenProps> = ({
       if (res.success && res.user) {
         useAuthStore.getState().setAuth(res.user, res.token || "session_active");
         onLoginSuccess(!res.isNewDoctor);
-      } else {
-        setError("Sign-in session closed. Please verify your login in the browser window.");
+      } else if (!res.cancelled) {
+        setError(res.error || "Sign-in could not be completed. Please try again.");
       }
     } catch (err: any) {
       setError(err.message || "Failed to connect to Google authentication. Please check your internet connection.");
