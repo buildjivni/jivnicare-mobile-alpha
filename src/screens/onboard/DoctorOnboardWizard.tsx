@@ -21,6 +21,7 @@ import { Card } from "../../components/ui/Card";
 import { doctorApi } from "../../api/doctor";
 import { uploadApi } from "../../api/upload";
 import { authApi } from "../../api/auth";
+import { apiClient } from "../../api/client";
 import { useAuthStore } from "../../store/useAuthStore";
 import {
   User,
@@ -38,8 +39,11 @@ import {
   Phone,
   DollarSign,
   Zap,
+  MapPin,
+  RefreshCw,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 
 export interface DoctorOnboardWizardProps {
   initialStep?: number;
@@ -90,10 +94,15 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   const [practiceName, setPracticeName] = useState("");
   const [practiceAddress, setPracticeAddress] = useState("");
-  const [district, setDistrict] = useState("Jamui");
+  const [district, setDistrict] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState("Bihar");
+  const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<"idle" | "success" | "error">("idle");
+  const [gpsErrorMessage, setGpsErrorMessage] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [operatorMobile, setOperatorMobile] = useState("");
   const [receptionist1Name, setReceptionist1Name] = useState("");
@@ -153,6 +162,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           if (draft.city) setCity(draft.city);
           if (draft.state) setState(draft.state);
           if (draft.pincode) setPincode(draft.pincode);
+          if (draft.latitude !== undefined) setLatitude(draft.latitude);
+          if (draft.longitude !== undefined) setLongitude(draft.longitude);
           if (draft.operatorName) setOperatorName(draft.operatorName);
           if (draft.operatorMobile) setOperatorMobile(draft.operatorMobile);
           if (draft.receptionist1Name) setReceptionist1Name(draft.receptionist1Name);
@@ -192,10 +203,10 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   useEffect(() => {
     if (!isHydratedRef.current) return;
     const draftPayload = {
-      step: currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule,
+      step: currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule,
     };
     SecureStore.setItemAsync(storageKey, JSON.stringify(draftPayload)).catch(() => {});
-  }, [currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule, storageKey]);
+  }, [currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule, storageKey]);
 
   useEffect(() => {
     const handleBack = () => {
@@ -217,6 +228,59 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       }
     }).catch(() => {});
   }, []);
+
+  const handleFetchGPSLocation = async () => {
+    setGpsLoading(true);
+    setGpsStatus("idle");
+    setGpsErrorMessage("");
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setGpsErrorMessage("Location permission denied. Please allow location access or type manually.");
+        setGpsStatus("error");
+        setGpsLoading(false);
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const lat = location.coords.latitude;
+      const lng = location.coords.longitude;
+      setLatitude(lat);
+      setLongitude(lng);
+
+      try {
+        const geoRes = await apiClient<{
+          success: boolean;
+          practiceAddress?: string;
+          city?: string;
+          state?: string;
+          district?: string;
+          pincode?: string;
+        }>(`/api/public/reverse-geocode?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`);
+
+        if (geoRes?.success) {
+          if (geoRes.practiceAddress) setPracticeAddress(geoRes.practiceAddress);
+          if (geoRes.city) setCity(geoRes.city);
+          if (geoRes.district) setDistrict(geoRes.district);
+          if (geoRes.state) setState(geoRes.state);
+          if (geoRes.pincode) setPincode(geoRes.pincode);
+          setGpsStatus("success");
+        } else {
+          setGpsStatus("success");
+        }
+      } catch (err: any) {
+        setGpsStatus("success");
+      }
+    } catch (err: any) {
+      setGpsErrorMessage(err.message || "Unable to retrieve GPS coordinates. Please enter location manually.");
+      setGpsStatus("error");
+    } finally {
+      setGpsLoading(false);
+    }
+  };
 
   const handleGoogleVerify = async () => {
     setIsGoogleLoading(true);
@@ -311,8 +375,10 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           practiceAddress: practiceAddress.trim(),
           district: district.trim(),
           city: (city || district).trim(),
-          state: state.trim() || "Bihar",
+          state: state.trim() || "India",
           pincode: pincode.trim(),
+          latitude: latitude || undefined,
+          longitude: longitude || undefined,
           operatorName: operatorName.trim(),
           operatorMobile: operatorMobile.trim(),
           receptionist1Name: receptionist1Name.trim() || undefined,
@@ -591,18 +657,66 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                 Enter your practice premises and pre-configure staff accounts for instant front-desk access upon verification.
               </Text>
 
-              {/* Clinic Identity & Address */}
+              {/* Clinic Identity & Address with GPS Auto-Detection */}
               <Card style={styles.formCard}>
+                <View style={styles.gpsHeaderRow}>
+                  <View style={styles.gpsIconBox}>
+                    <Building2 size={20} color="#D97706" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardHeadingTitle}>Clinic Location & Address</Text>
+                    <Text style={styles.cardSubText}>
+                      Enable GPS to automatically detect your clinic's location across India.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleFetchGPSLocation}
+                    disabled={gpsLoading}
+                    style={[
+                      styles.gpsButton,
+                      gpsStatus === "success" && styles.gpsButtonSuccess,
+                      gpsStatus === "error" && styles.gpsButtonError,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    {gpsLoading ? (
+                      <View style={styles.gpsButtonContent}>
+                        <RefreshCw size={13} color="#0284C7" />
+                        <Text style={[styles.gpsButtonText, { color: "#0284C7" }]}>Locating...</Text>
+                      </View>
+                    ) : gpsStatus === "success" ? (
+                      <View style={styles.gpsButtonContent}>
+                        <CheckCircle2 size={13} color="#059669" />
+                        <Text style={[styles.gpsButtonText, { color: "#059669" }]}>Located!</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.gpsButtonContent}>
+                        <MapPin size={13} color={colors.primary} />
+                        <Text style={styles.gpsButtonText}>Use GPS</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {gpsStatus === "error" && (
+                  <View style={styles.gpsErrorBanner}>
+                    <AlertCircle size={14} color={colors.destructive} />
+                    <Text style={styles.gpsErrorText}>
+                      {gpsErrorMessage || "GPS detection failed. Please type your location manually below."}
+                    </Text>
+                  </View>
+                )}
+
                 <Input
                   label="Practice / Clinic / Hospital Name"
-                  placeholder="e.g. Sanjeevani Healthcare Clinic"
+                  placeholder="e.g. City Care Clinic"
                   value={practiceName}
                   onChangeText={setPracticeName}
                 />
 
                 <Input
                   label="Complete Street Address"
-                  placeholder="e.g. Near Main Market, Station Road"
+                  placeholder="e.g. Shop No. 5, Ground Floor, Main Road"
                   value={practiceAddress}
                   onChangeText={setPracticeAddress}
                   multiline
@@ -612,14 +726,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   <Input
                     containerStyle={{ flex: 1 }}
                     label="District"
-                    placeholder="e.g. Jamui"
+                    placeholder="e.g. Patna / Ranchi"
                     value={district}
                     onChangeText={(val) => setDistrict(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
                   <Input
                     containerStyle={{ flex: 1 }}
                     label="City / Town"
-                    placeholder="e.g. Jamui"
+                    placeholder="e.g. Patna / Ranchi"
                     value={city}
                     onChangeText={(val) => setCity(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
@@ -629,7 +743,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   <Input
                     containerStyle={{ flex: 1 }}
                     label="State"
-                    placeholder="Bihar"
+                    placeholder="e.g. Bihar / Jharkhand / Delhi"
                     value={state}
                     onChangeText={(val) => setState(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
@@ -1332,6 +1446,67 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginBottom: 12,
     lineHeight: 16,
+  },
+  gpsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  gpsIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gpsButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  gpsButtonSuccess: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
+  },
+  gpsButtonError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  gpsButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  gpsButtonText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  gpsErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: radius.md,
+    padding: 8,
+    marginBottom: 12,
+  },
+  gpsErrorText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.destructive,
+    flex: 1,
   },
   fieldLabel: {
     ...typography.caption,
