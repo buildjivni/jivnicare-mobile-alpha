@@ -10,6 +10,7 @@ import {
   Alert,
   BackHandler,
   Switch,
+  Modal,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { ScreenContainer } from "../../components/layout/ScreenContainer";
@@ -41,6 +42,8 @@ import {
   Zap,
   MapPin,
   RefreshCw,
+  ChevronDown,
+  X,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -115,6 +118,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   const [medicalRegistrationNumber, setRegistrationNumber] = useState("");
   const [medicalCouncil, setMedicalCouncil] = useState(MEDICAL_COUNCILS[0]);
+  const [isCouncilModalVisible, setIsCouncilModalVisible] = useState(false);
   const [registrationYear, setRegistrationYear] = useState("");
   const [experience, setExperience] = useState("");
   const [qualifications, setQualifications] = useState("MBBS");
@@ -307,7 +311,15 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       });
       if (!result.canceled && result.assets[0]?.uri) {
         setIsDocUploading(true);
-        const uploaded = await uploadApi.uploadFile(result.assets[0].uri);
+        const prefix =
+          type === "profile"
+            ? "doctor-profile"
+            : type === "clinic"
+            ? "clinic-cover"
+            : type === "degree"
+            ? "doctor-degree"
+            : "doctor-nmc";
+        const uploaded = await uploadApi.uploadFile(result.assets[0].uri, prefix);
         if (type === "profile") setProfilePhotoUrl(uploaded);
         if (type === "clinic") setClinicPhotoUrl(uploaded);
         if (type === "degree") setDegreeCertificateUrl(uploaded);
@@ -937,30 +949,16 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                 />
 
                 <Text style={styles.fieldLabel}>State Medical Council</Text>
-                <View style={styles.councilList}>
-                  {MEDICAL_COUNCILS.map((c) => (
-                    <TouchableOpacity
-                      key={c}
-                      style={[
-                        styles.councilItem,
-                        medicalCouncil === c && styles.councilItemActive,
-                      ]}
-                      onPress={() => setMedicalCouncil(c)}
-                    >
-                      <Text
-                        style={[
-                          styles.councilText,
-                          medicalCouncil === c && styles.councilTextActive,
-                        ]}
-                      >
-                        {c}
-                      </Text>
-                      {medicalCouncil === c && (
-                        <CheckCircle2 size={16} color={colors.primary} />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <TouchableOpacity
+                  style={styles.selectTrigger}
+                  onPress={() => setIsCouncilModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.selectTriggerText}>
+                    {medicalCouncil || "Select State Medical Council"}
+                  </Text>
+                  <ChevronDown size={18} color="#64748B" />
+                </TouchableOpacity>
 
                 <View style={styles.twoColumnRow}>
                   <Input
@@ -1311,6 +1309,74 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Medical Council Picker Modal (Bottom Sheet) */}
+      <Modal
+        visible={isCouncilModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsCouncilModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setIsCouncilModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalContentBox}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>Select Medical Council</Text>
+                <Text style={styles.modalSub}>
+                  Select your registering State Medical Council
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setIsCouncilModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: 380 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {MEDICAL_COUNCILS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[
+                    styles.modalCouncilItem,
+                    medicalCouncil === c && styles.modalCouncilItemActive,
+                  ]}
+                  onPress={() => {
+                    setMedicalCouncil(c);
+                    setIsCouncilModalVisible(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.modalCouncilText,
+                      medicalCouncil === c && styles.modalCouncilTextActive,
+                    ]}
+                  >
+                    {c}
+                  </Text>
+                  {medicalCouncil === c && (
+                    <CheckCircle2 size={18} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ScreenContainer>
   );
 };
@@ -1543,31 +1609,86 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  councilList: {
-    gap: 6,
-    marginBottom: 12,
-  },
-  councilItem: {
+  selectTrigger: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: radius.md,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 14,
+  },
+  selectTriggerText: {
+    ...typography.bodySmall,
+    fontSize: 13,
+    color: "#0F172A",
+    fontWeight: "600",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "flex-end",
+  },
+  modalContentBox: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 36,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  modalTitle: {
+    ...typography.titleMedium,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  modalSub: {
+    ...typography.caption,
+    fontSize: 11.5,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  modalCloseButton: {
+    padding: 6,
+    borderRadius: radius.full,
+    backgroundColor: "#F1F5F9",
+  },
+  modalCouncilItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: "#E2E8F0",
     backgroundColor: "#FAFAFA",
+    marginBottom: 8,
   },
-  councilItemActive: {
+  modalCouncilItemActive: {
     borderColor: colors.primary,
     backgroundColor: "#EFF6FF",
   },
-  councilText: {
+  modalCouncilText: {
     ...typography.bodySmall,
-    fontSize: 11.5,
-    color: colors.navy,
+    fontSize: 13,
+    color: "#0F172A",
+    fontWeight: "500",
   },
-  councilTextActive: {
+  modalCouncilTextActive: {
     fontWeight: "700",
     color: colors.primary,
   },
