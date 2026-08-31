@@ -60,7 +60,11 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [chartWidth, setChartWidth] = useState(Dimensions.get("window").width - 72);
+
+  // Dynamic measured container widths for charts
+  const initialWidth = Dimensions.get("window").width - 72;
+  const [volumeChartWidth, setVolumeChartWidth] = useState(initialWidth);
+  const [waitChartWidth, setWaitChartWidth] = useState(initialWidth);
 
   const loadAnalytics = async () => {
     try {
@@ -147,12 +151,13 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
       4
     );
 
+    const w = Math.max(volumeChartWidth, 180);
     const chartHeight = 140;
-    const paddingLeft = 24;
-    const paddingRight = 12;
-    const paddingTop = 12;
-    const paddingBottom = 24;
-    const plotWidth = chartWidth - paddingLeft - paddingRight;
+    const paddingLeft = 28;
+    const paddingRight = 16;
+    const paddingTop = 14;
+    const paddingBottom = 22;
+    const plotWidth = w - paddingLeft - paddingRight;
     const plotHeight = chartHeight - paddingTop - paddingBottom;
 
     const stepX =
@@ -197,7 +202,15 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
     ];
 
     return (
-      <View style={styles.chartContainer}>
+      <View
+        style={styles.chartContainer}
+        onLayout={(e) => {
+          const width = e.nativeEvent.layout.width;
+          if (width > 0 && Math.abs(width - volumeChartWidth) > 1) {
+            setVolumeChartWidth(width);
+          }
+        }}
+      >
         {/* Chart Legend */}
         <View style={styles.chartLegendRow}>
           <View style={styles.legendIndicatorItem}>
@@ -210,10 +223,10 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           </View>
         </View>
 
-        <Svg width={chartWidth} height={chartHeight}>
+        <Svg width={w} height={chartHeight} viewBox={`0 0 ${w} ${chartHeight}`}>
           <Defs>
             <SvgGradient id="completedGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#6366F1" stopOpacity="0.3" />
+              <Stop offset="0" stopColor="#6366F1" stopOpacity="0.25" />
               <Stop offset="1" stopColor="#6366F1" stopOpacity="0.0" />
             </SvgGradient>
           </Defs>
@@ -222,14 +235,14 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           <Line
             x1={paddingLeft}
             y1={paddingTop}
-            x2={chartWidth - paddingRight}
+            x2={w - paddingRight}
             y2={paddingTop}
             stroke="#F1F5F9"
             strokeWidth="1"
             strokeDasharray="3 3"
           />
           <SvgText
-            x={paddingLeft - 4}
+            x={paddingLeft - 6}
             y={paddingTop + 4}
             fill="#94A3B8"
             fontSize="9"
@@ -241,14 +254,14 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           <Line
             x1={paddingLeft}
             y1={paddingTop + plotHeight / 2}
-            x2={chartWidth - paddingRight}
+            x2={w - paddingRight}
             y2={paddingTop + plotHeight / 2}
             stroke="#F1F5F9"
             strokeWidth="1"
             strokeDasharray="3 3"
           />
           <SvgText
-            x={paddingLeft - 4}
+            x={paddingLeft - 6}
             y={paddingTop + plotHeight / 2 + 3}
             fill="#94A3B8"
             fontSize="9"
@@ -260,13 +273,13 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           <Line
             x1={paddingLeft}
             y1={paddingTop + plotHeight}
-            x2={chartWidth - paddingRight}
+            x2={w - paddingRight}
             y2={paddingTop + plotHeight}
             stroke="#E2E8F0"
             strokeWidth="1"
           />
           <SvgText
-            x={paddingLeft - 4}
+            x={paddingLeft - 6}
             y={paddingTop + plotHeight + 3}
             fill="#94A3B8"
             fontSize="9"
@@ -307,10 +320,19 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           )}
 
           {/* X Axis Date Labels */}
-          {labelIndices.map((idx) => {
+          {labelIndices.map((idx, posIdx) => {
             const d = dailyBookingTrend[idx];
             if (!d) return null;
-            const x = paddingLeft + idx * stepX;
+            let anchor: "start" | "middle" | "end" = "middle";
+            let x = paddingLeft + idx * stepX;
+            if (posIdx === 0) {
+              anchor = "start";
+              x = paddingLeft;
+            } else if (posIdx === labelIndices.length - 1) {
+              anchor = "end";
+              x = w - paddingRight;
+            }
+
             return (
               <SvgText
                 key={`label-${idx}`}
@@ -318,7 +340,7 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
                 y={chartHeight - 4}
                 fill="#94A3B8"
                 fontSize="8.5"
-                textAnchor="middle"
+                textAnchor={anchor}
               >
                 {formatShortDate(d.date)}
               </SvgText>
@@ -340,28 +362,39 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
     }
 
     const maxWait = Math.max(...dailyWaitTrend.map((d) => d.avgWaitMinutes), 20);
+    const w = Math.max(waitChartWidth, 180);
     const chartHeight = 90;
-    const paddingLeft = 24;
-    const paddingRight = 12;
+    const paddingLeft = 28;
+    const paddingRight = 16;
     const paddingTop = 8;
-    const paddingBottom = 20;
-    const plotWidth = chartWidth - paddingLeft - paddingRight;
+    const paddingBottom = 18;
+    const plotWidth = w - paddingLeft - paddingRight;
     const plotHeight = chartHeight - paddingTop - paddingBottom;
     const barWidth = Math.max(
-      4,
-      Math.min(12, (plotWidth / dailyWaitTrend.length) * 0.6)
+      3,
+      Math.min(8, (plotWidth / dailyWaitTrend.length) * 0.5)
     );
     const stepX =
-      dailyWaitTrend.length > 1 ? plotWidth / (dailyWaitTrend.length - 1) : plotWidth;
+      dailyWaitTrend.length > 1
+        ? (plotWidth - barWidth) / (dailyWaitTrend.length - 1)
+        : plotWidth;
 
     return (
-      <View style={{ marginTop: 8 }}>
-        <Svg width={chartWidth} height={chartHeight}>
+      <View
+        style={styles.chartContainer}
+        onLayout={(e) => {
+          const width = e.nativeEvent.layout.width;
+          if (width > 0 && Math.abs(width - waitChartWidth) > 1) {
+            setWaitChartWidth(width);
+          }
+        }}
+      >
+        <Svg width={w} height={chartHeight} viewBox={`0 0 ${w} ${chartHeight}`}>
           {/* Baseline */}
           <Line
             x1={paddingLeft}
             y1={paddingTop + plotHeight}
-            x2={chartWidth - paddingRight}
+            x2={w - paddingRight}
             y2={paddingTop + plotHeight}
             stroke="#E2E8F0"
             strokeWidth="1"
@@ -369,32 +402,44 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
 
           {/* Bars */}
           {dailyWaitTrend.map((d, i) => {
-            const x = paddingLeft + i * stepX - barWidth / 2;
-            const barH = (d.avgWaitMinutes / maxWait) * plotHeight;
+            const x = paddingLeft + i * stepX;
+            const rawH = (d.avgWaitMinutes / maxWait) * plotHeight;
+            const barH = d.avgWaitMinutes > 0 ? Math.max(rawH, 4) : 0;
             const y = paddingTop + plotHeight - barH;
             return (
               <G key={`wait-bar-${i}`}>
-                <Rect
-                  x={x}
-                  y={y}
-                  width={barWidth}
-                  height={barH}
-                  fill="#10B981"
-                  rx="3"
-                />
+                {barH > 0 && (
+                  <Rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={barH}
+                    fill="#10B981"
+                    rx={barWidth > 4 ? 2 : 1}
+                  />
+                )}
               </G>
             );
           })}
 
           {/* Y Axis Unit */}
           <SvgText
-            x={paddingLeft - 4}
+            x={paddingLeft - 6}
             y={paddingTop + 8}
             fill="#94A3B8"
             fontSize="8.5"
             textAnchor="end"
           >
             {maxWait}m
+          </SvgText>
+          <SvgText
+            x={paddingLeft - 6}
+            y={paddingTop + plotHeight + 3}
+            fill="#94A3B8"
+            fontSize="8.5"
+            textAnchor="end"
+          >
+            0
           </SvgText>
         </Svg>
       </View>
@@ -415,10 +460,6 @@ export const PerformanceScreen: React.FC<PerformanceScreenProps> = ({ onBack }) 
           />
         }
         showsVerticalScrollIndicator={false}
-        onLayout={(e) => {
-          const w = e.nativeEvent.layout.width - 40;
-          if (w > 100) setChartWidth(w);
-        }}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -785,6 +826,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     borderRadius: radius.xl,
+    overflow: "hidden",
   },
   cardHeaderRow: {
     flexDirection: "row",
@@ -805,6 +847,8 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     marginTop: 6,
+    width: "100%",
+    overflow: "hidden",
   },
   chartLegendRow: {
     flexDirection: "row",
@@ -929,6 +973,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     borderRadius: radius.xl,
+    overflow: "hidden",
   },
   efficiencyContent: {
     marginTop: 4,
