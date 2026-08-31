@@ -417,12 +417,28 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   return (
     <ScreenContainer style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { if (currentStep > 1) setCurrentStep((prev) => prev - 1); else onExit(); }} style={styles.iconButton}>
+        <TouchableOpacity
+          onPress={() => {
+            if (currentStep > 1) setCurrentStep((prev) => prev - 1);
+            else onExit();
+          }}
+          style={styles.iconButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <ArrowLeft size={20} color={colors.navy} />
         </TouchableOpacity>
         <BrandLogo size="sm" />
         <View style={styles.stepBadge}>
-          <Text style={styles.stepBadgeText}>Step {currentStep} of 4</Text>
+          <Text style={styles.stepBadgeText}>
+            Step {currentStep} of 4 •{" "}
+            {currentStep === 1
+              ? "Identity"
+              : currentStep === 2
+              ? "Clinic & Staff"
+              : currentStep === 3
+              ? "Credentials"
+              : "Schedule & Fees"}
+          </Text>
         </View>
       </View>
 
@@ -430,11 +446,18 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         <View style={[styles.progressBar, { width: `${(currentStep / 4) * 100}%` }]} />
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {error && (
             <View style={styles.errorBox}>
-              <AlertCircle size={16} color={colors.destructive} />
+              <AlertCircle size={18} color={colors.destructive} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
@@ -444,9 +467,9 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 1 && (
             <View>
-              <Text style={styles.stepTitle}>Doctor Identity & Core</Text>
+              <Text style={styles.stepTitle}>Doctor Identity & Contact</Text>
               <Text style={styles.stepSubtitle}>
-                Provide your primary contact and specialty details for NMC verified directory listing.
+                Provide your primary contact and clinical specialty details for NMC-verified directory listing.
               </Text>
 
               {/* Google Verification Status Card */}
@@ -455,7 +478,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   <View
                     style={[
                       styles.googleVerifyIconBox,
-                      isAuthenticated && { backgroundColor: colors.secondaryLight },
+                      isAuthenticated && { backgroundColor: "#ECFDF5" },
                     ]}
                   >
                     {isAuthenticated ? (
@@ -466,12 +489,12 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.googleVerifyTitle}>
-                      {isAuthenticated ? "Google Account Linked" : "Google Authentication Required"}
+                      {isAuthenticated ? "Google Account Linked" : "Google Authentication"}
                     </Text>
-                    <Text style={styles.googleVerifySub}>
+                    <Text style={styles.googleVerifySub} numberOfLines={1}>
                       {isAuthenticated && user?.email
                         ? user.email
-                        : "Required to secure clinical dashboard"}
+                        : "Required to secure your clinical portal"}
                     </Text>
                   </View>
                   {!isAuthenticated && (
@@ -489,7 +512,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
               <Card style={styles.formCard}>
                 <Input
                   label="Legal Full Name (with Dr. prefix)"
-                  placeholder="Dr. Rajesh Kumar"
+                  placeholder="e.g. Dr. Rajesh Kumar"
                   value={fullName}
                   onChangeText={(val) => setFullName(val.replace(/[^a-zA-Z\s.]/g, ""))}
                   leftIcon={<User size={18} color={colors.primary} />}
@@ -553,7 +576,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                 loading={isStepLoading}
                 icon={<ArrowRight size={18} color="#FFFFFF" />}
                 iconPosition="right"
-                style={{ marginTop: 20 }}
+                style={{ marginTop: 14 }}
               />
             </View>
           )}
@@ -565,7 +588,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
             <View>
               <Text style={styles.stepTitle}>Clinic Location & Staff</Text>
               <Text style={styles.stepSubtitle}>
-                Enter your practice premises and pre-configure operator/receptionist accounts for instant team access upon approval.
+                Enter your practice premises and pre-configure staff accounts for instant front-desk access upon verification.
               </Text>
 
               {/* Clinic Identity & Address */}
@@ -626,7 +649,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
               <Card style={styles.formCard}>
                 <Text style={styles.cardHeadingTitle}>Primary Clinic Operator</Text>
                 <Text style={styles.cardSubText}>
-                  Staff member or manager operating the live OPD queue counter.
+                  Staff member managing the live OPD queue counter and patient check-in.
                 </Text>
 
                 <Input
@@ -651,7 +674,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
               <Card style={styles.formCard}>
                 <Text style={styles.cardHeadingTitle}>Pre-Register Receptionists (Optional)</Text>
                 <Text style={styles.cardSubText}>
-                  Pre-configure up to 3 front-desk receptionists so their logins are active upon verification.
+                  Pre-configure up to 3 front-desk receptionists so their logins are ready immediately.
                 </Text>
 
                 {/* Receptionist 1 */}
@@ -786,7 +809,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 3 && (
             <View>
-              <Text style={styles.stepTitle}>Credentials & Clinical Profile</Text>
+              <Text style={styles.stepTitle}>Credentials & Verification</Text>
               <Text style={styles.stepSubtitle}>
                 NMC registration details, clinical qualifications, biography, and verification documents.
               </Text>
@@ -1016,7 +1039,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 4 && (
             <View>
-              <Text style={styles.stepTitle}>Operations & Consultation Fees</Text>
+              <Text style={styles.stepTitle}>OPD Operations & Pricing</Text>
               <Text style={styles.stepSubtitle}>
                 Configure your OPD pricing, emergency consultation availability, and weekly shift timings.
               </Text>
@@ -1248,22 +1271,23 @@ const styles = StyleSheet.create({
   },
   stepTitle: {
     ...typography.titleMedium,
-    color: colors.navy,
+    color: "#0F172A",
     fontSize: 20,
     fontWeight: "800",
+    letterSpacing: -0.3,
   },
   stepSubtitle: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textSecondary,
+    ...typography.bodySmall,
+    fontSize: 13,
+    color: "#64748B",
     marginTop: 4,
     marginBottom: 16,
-    lineHeight: 17,
+    lineHeight: 18,
   },
   googleVerifyCard: {
     padding: 14,
     marginBottom: 14,
-    borderRadius: radius.xl,
+    borderRadius: 16,
   },
   googleVerifyRow: {
     flexDirection: "row",
@@ -1271,8 +1295,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   googleVerifyIconBox: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radius.md,
     backgroundColor: "#EFF6FF",
     alignItems: "center",
@@ -1280,40 +1304,40 @@ const styles = StyleSheet.create({
   },
   googleVerifyTitle: {
     ...typography.titleSmall,
-    fontSize: 13,
-    color: colors.navy,
+    fontSize: 13.5,
+    color: "#0F172A",
     fontWeight: "700",
   },
   googleVerifySub: {
     ...typography.caption,
-    fontSize: 11,
-    color: colors.textMuted,
+    fontSize: 11.5,
+    color: "#64748B",
     marginTop: 1,
   },
   formCard: {
     padding: 16,
     marginBottom: 14,
-    borderRadius: radius.xl,
+    borderRadius: 16,
   },
   cardHeadingTitle: {
     ...typography.titleSmall,
-    color: colors.navy,
-    fontSize: 13,
+    color: "#0F172A",
+    fontSize: 13.5,
     fontWeight: "700",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   cardSubText: {
     ...typography.caption,
-    fontSize: 11,
-    color: colors.textMuted,
+    fontSize: 11.5,
+    color: "#64748B",
     marginBottom: 12,
-    lineHeight: 15,
+    lineHeight: 16,
   },
   fieldLabel: {
     ...typography.caption,
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: "700",
-    color: colors.navy,
+    color: "#334155",
     marginTop: 10,
     marginBottom: 8,
   },
