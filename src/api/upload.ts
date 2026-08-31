@@ -1,3 +1,4 @@
+import * as FileSystem from "expo-file-system";
 import { DEFAULT_API_BASE_URL } from "./client";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -21,28 +22,33 @@ export const uploadApi = {
         : "image/jpeg";
     const filename = `${filePrefix}-${Date.now()}.${ext}`;
 
-    // Read local file as blob
-    const fileResponse = await fetch(fileUri);
-    const blob = await fileResponse.blob();
-
     const uploadUrl = `${DEFAULT_API_BASE_URL}/api/upload?filename=${encodeURIComponent(
       filename
     )}`;
 
-    const res = await fetch(uploadUrl, {
-      method: "POST",
+    const response = await FileSystem.uploadAsync(uploadUrl, fileUri, {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
       headers: {
         "Content-Type": mime,
         ...(token && token !== "session_active"
           ? { Authorization: `Bearer ${token}` }
           : {}),
       },
-      body: blob,
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.url) {
-      throw new Error(data.error || "Upload failed. Please try again.");
+    if (response.status < 200 || response.status >= 300) {
+      let errorMsg = `Upload failed (${response.status})`;
+      try {
+        const errObj = JSON.parse(response.body);
+        if (errObj.error) errorMsg = errObj.error;
+      } catch (_) {}
+      throw new Error(errorMsg);
+    }
+
+    const data = JSON.parse(response.body);
+    if (!data.url) {
+      throw new Error("No URL returned from upload server.");
     }
 
     return data.secure_url || data.url;

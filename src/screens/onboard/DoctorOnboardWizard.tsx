@@ -118,7 +118,9 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   const [medicalRegistrationNumber, setRegistrationNumber] = useState("");
   const [medicalCouncil, setMedicalCouncil] = useState(MEDICAL_COUNCILS[0]);
+  const [otherCouncilName, setOtherCouncilName] = useState("");
   const [isCouncilModalVisible, setIsCouncilModalVisible] = useState(false);
+  const [uploadingField, setUploadingField] = useState<"profile" | "clinic" | "degree" | "nmc" | null>(null);
   const [registrationYear, setRegistrationYear] = useState("");
   const [experience, setExperience] = useState("");
   const [qualifications, setQualifications] = useState("MBBS");
@@ -179,6 +181,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           if (draft.visibleReceptionistCount !== undefined) setVisibleReceptionistCount(draft.visibleReceptionistCount);
           if (draft.medicalRegistrationNumber) setRegistrationNumber(draft.medicalRegistrationNumber);
           if (draft.medicalCouncil) setMedicalCouncil(draft.medicalCouncil);
+          if (draft.otherCouncilName) setOtherCouncilName(draft.otherCouncilName);
           if (draft.registrationYear) setRegistrationYear(draft.registrationYear);
           if (draft.experience) setExperience(draft.experience);
           if (draft.qualifications) setQualifications(draft.qualifications);
@@ -206,11 +209,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   useEffect(() => {
     if (!isHydratedRef.current) return;
-    const draftPayload = {
-      step: currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule,
-    };
-    SecureStore.setItemAsync(storageKey, JSON.stringify(draftPayload)).catch(() => {});
-  }, [currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule, storageKey]);
+    const timer = setTimeout(() => {
+      const draftPayload = {
+        step: currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, otherCouncilName, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule,
+      };
+      SecureStore.setItemAsync(storageKey, JSON.stringify(draftPayload)).catch(() => {});
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, otherCouncilName, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule, storageKey]);
 
   useEffect(() => {
     const handleBack = () => {
@@ -310,6 +316,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         quality: 0.8,
       });
       if (!result.canceled && result.assets[0]?.uri) {
+        setUploadingField(type);
         setIsDocUploading(true);
         const prefix =
           type === "profile"
@@ -324,10 +331,12 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         if (type === "clinic") setClinicPhotoUrl(uploaded);
         if (type === "degree") setDegreeCertificateUrl(uploaded);
         if (type === "nmc") setNmcCertificateUrl(uploaded);
+        Alert.alert("Upload Successful", "Document uploaded and verified successfully.");
       }
     } catch (e: any) {
-      Alert.alert("Upload Failed", e.message || "Could not upload file");
+      Alert.alert("Upload Failed", e.message || "Could not upload file. Please try again.");
     } finally {
+      setUploadingField(null);
       setIsDocUploading(false);
     }
   };
@@ -416,15 +425,24 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       setError("Registration Number is required.");
       return;
     }
+    if (medicalCouncil === "Other State Medical Council" && !otherCouncilName.trim()) {
+      setError("Please specify the name of your State Medical Council.");
+      return;
+    }
     setError(null);
     setIsStepLoading(true);
+    const effectiveCouncil =
+      medicalCouncil === "Other State Medical Council" && otherCouncilName.trim()
+        ? otherCouncilName.trim()
+        : medicalCouncil;
+
     try {
       if (isAuthenticated) {
         await doctorApi.submitOnboardStep3({
           qualifications: qualifications.trim(),
           experience: parseInt(experience, 10) || 0,
           medicalRegistrationNumber: medicalRegistrationNumber.trim(),
-          medicalCouncil,
+          medicalCouncil: effectiveCouncil,
           registrationYear: parseInt(registrationYear, 10) || 2000,
           specialization: speciality,
           profilePhoto: profilePhotoUrl,
@@ -960,6 +978,16 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   <ChevronDown size={18} color="#64748B" />
                 </TouchableOpacity>
 
+                {medicalCouncil === "Other State Medical Council" && (
+                  <Input
+                    label="Specify Other State Medical Council *"
+                    placeholder="e.g. Karnataka Medical Council"
+                    value={otherCouncilName}
+                    onChangeText={setOtherCouncilName}
+                    containerStyle={{ marginBottom: 14 }}
+                  />
+                )}
+
                 <View style={styles.twoColumnRow}>
                   <Input
                     containerStyle={{ flex: 1 }}
@@ -1057,6 +1085,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       title="Upload"
                       variant="outline"
                       size="sm"
+                      loading={uploadingField === "profile"}
+                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("profile")}
                     />
                   )}
@@ -1078,6 +1108,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       title="Upload"
                       variant="outline"
                       size="sm"
+                      loading={uploadingField === "clinic"}
+                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("clinic")}
                     />
                   )}
@@ -1099,6 +1131,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       title="Upload"
                       variant="outline"
                       size="sm"
+                      loading={uploadingField === "degree"}
+                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("degree")}
                     />
                   )}
@@ -1120,6 +1154,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       title="Upload"
                       variant="outline"
                       size="sm"
+                      loading={uploadingField === "nmc"}
+                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("nmc")}
                     />
                   )}
