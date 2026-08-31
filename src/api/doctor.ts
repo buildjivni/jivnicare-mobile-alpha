@@ -21,12 +21,9 @@ export const doctorApi = {
 
   // ── Onboarding (Steps 1–4) ───────────────────────────────────────
   submitOnboardStep1: async (data: {
-    name: string;
+    fullName: string;
+    contactNumber: string;
     speciality: string;
-    experienceYears: number;
-    qualifications: string[];
-    registrationNumber: string;
-    medicalCouncil: string;
   }) => {
     return apiClient("/api/doctor/onboard/step1", {
       method: "POST",
@@ -35,14 +32,22 @@ export const doctorApi = {
   },
 
   submitOnboardStep2: async (data: {
-    clinicName: string;
-    clinicAddress: string;
-    clinicDistrict: string;
-    clinicCity: string;
-    clinicPincode: string;
-    consultationFee: number;
-    latitude?: number;
-    longitude?: number;
+    practiceName: string;
+    practiceAddress: string;
+    district: string;
+    city: string;
+    state: string;
+    pincode: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    operatorName: string;
+    operatorMobile: string;
+    receptionist1Name?: string;
+    receptionist1Phone?: string;
+    receptionist2Name?: string;
+    receptionist2Phone?: string;
+    receptionist3Name?: string;
+    receptionist3Phone?: string;
   }) => {
     return apiClient("/api/doctor/onboard/step2", {
       method: "POST",
@@ -51,10 +56,24 @@ export const doctorApi = {
   },
 
   submitOnboardStep3: async (data: {
-    weeklySchedule: WeeklySchedule;
-    averageConsultationMinutes: number;
-    emergencyCapacity?: number;
-    emergencyFee?: number;
+    qualifications: string;
+    experience: number;
+    medicalRegistrationNumber: string;
+    medicalCouncil: string;
+    registrationYear: number;
+    specialization: string;
+    profilePhoto: string;
+    clinicPhoto: string;
+    degreeCertificate: string;
+    nmcCertificate: string;
+    languages?: string;
+    bio?: string;
+    diseases?: string | null;
+    procedures?: string | null;
+    expertiseTags?: string;
+    gender?: string | null;
+    email?: string | null;
+    lifetimePatientsDeclaration?: number | null;
   }) => {
     return apiClient("/api/doctor/onboard/step3", {
       method: "POST",
@@ -63,10 +82,11 @@ export const doctorApi = {
   },
 
   submitOnboardStep4: async (data: {
-    profilePhoto?: string;
-    registrationDocUrl?: string;
-    clinicPhotos?: string[];
-    acceptTerms: boolean;
+    weeklySchedule: Record<string, { isOpen: boolean; start: string; end: string; maxPatients: number }>;
+    consultationFee: number;
+    emergencyAvailable: boolean;
+    emergencyFee?: number | null;
+    bookingStartTime: string;
   }) => {
     return apiClient("/api/doctor/onboard/step4", {
       method: "POST",
