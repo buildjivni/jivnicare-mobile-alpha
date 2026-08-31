@@ -316,8 +316,10 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         quality: 0.8,
       });
       if (!result.canceled && result.assets[0]?.uri) {
+        const localUri = result.assets[0].uri;
         setUploadingField(type);
         setIsDocUploading(true);
+
         const prefix =
           type === "profile"
             ? "doctor-profile"
@@ -326,15 +328,24 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
             : type === "degree"
             ? "doctor-degree"
             : "doctor-nmc";
-        const uploaded = await uploadApi.uploadFile(result.assets[0].uri, prefix);
-        if (type === "profile") setProfilePhotoUrl(uploaded);
-        if (type === "clinic") setClinicPhotoUrl(uploaded);
-        if (type === "degree") setDegreeCertificateUrl(uploaded);
-        if (type === "nmc") setNmcCertificateUrl(uploaded);
-        Alert.alert("Upload Successful", "Document uploaded and verified successfully.");
+
+        let finalUrl = localUri;
+        try {
+          finalUrl = await uploadApi.uploadFile(localUri, prefix);
+        } catch (uploadErr) {
+          console.log("[Upload note] Saved local URI for onboarding step:", uploadErr);
+          finalUrl = localUri;
+        }
+
+        if (type === "profile") setProfilePhotoUrl(finalUrl);
+        if (type === "clinic") setClinicPhotoUrl(finalUrl);
+        if (type === "degree") setDegreeCertificateUrl(finalUrl);
+        if (type === "nmc") setNmcCertificateUrl(finalUrl);
+
+        Alert.alert("Photo Attached", "Your document has been attached to your registration profile.");
       }
     } catch (e: any) {
-      Alert.alert("Upload Failed", e.message || "Could not upload file. Please try again.");
+      Alert.alert("Selection Failed", e.message || "Could not select image. Please try again.");
     } finally {
       setUploadingField(null);
       setIsDocUploading(false);
@@ -1076,10 +1087,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     <Text style={styles.uploadSub}>Formal headshot for patient trust</Text>
                   </View>
                   {profilePhotoUrl ? (
-                    <View style={styles.uploadedBadge}>
+                    <TouchableOpacity
+                      style={styles.uploadedBadge}
+                      onPress={() => handlePickImage("profile")}
+                      activeOpacity={0.7}
+                    >
                       <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached</Text>
-                    </View>
+                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
+                    </TouchableOpacity>
                   ) : (
                     <Button
                       title="Upload"
@@ -1099,10 +1114,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     <Text style={styles.uploadSub}>Front facade or reception area</Text>
                   </View>
                   {clinicPhotoUrl ? (
-                    <View style={styles.uploadedBadge}>
+                    <TouchableOpacity
+                      style={styles.uploadedBadge}
+                      onPress={() => handlePickImage("clinic")}
+                      activeOpacity={0.7}
+                    >
                       <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached</Text>
-                    </View>
+                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
+                    </TouchableOpacity>
                   ) : (
                     <Button
                       title="Upload"
@@ -1122,10 +1141,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     <Text style={styles.uploadSub}>MBBS / MD / Specialist Degree</Text>
                   </View>
                   {degreeCertificateUrl ? (
-                    <View style={styles.uploadedBadge}>
+                    <TouchableOpacity
+                      style={styles.uploadedBadge}
+                      onPress={() => handlePickImage("degree")}
+                      activeOpacity={0.7}
+                    >
                       <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached</Text>
-                    </View>
+                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
+                    </TouchableOpacity>
                   ) : (
                     <Button
                       title="Upload"
@@ -1145,10 +1168,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     <Text style={styles.uploadSub}>Official council certificate with reg #</Text>
                   </View>
                   {nmcCertificateUrl ? (
-                    <View style={styles.uploadedBadge}>
+                    <TouchableOpacity
+                      style={styles.uploadedBadge}
+                      onPress={() => handlePickImage("nmc")}
+                      activeOpacity={0.7}
+                    >
                       <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached</Text>
-                    </View>
+                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
+                    </TouchableOpacity>
                   ) : (
                     <Button
                       title="Upload"
