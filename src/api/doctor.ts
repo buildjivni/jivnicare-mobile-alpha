@@ -62,10 +62,10 @@ export const doctorApi = {
     medicalCouncil: string;
     registrationYear: number;
     specialization: string;
-    profilePhoto: string;
-    clinicPhoto: string;
-    degreeCertificate: string;
-    nmcCertificate: string;
+    profilePhoto?: string | null;
+    clinicPhoto?: string | null;
+    degreeCertificate?: string | null;
+    nmcCertificate?: string | null;
     languages?: string;
     bio?: string;
     diseases?: string | null;

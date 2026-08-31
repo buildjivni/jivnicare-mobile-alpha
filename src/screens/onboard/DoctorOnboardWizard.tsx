@@ -255,10 +255,6 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   };
 
   const handleNextStep1 = async () => {
-    if (!isAuthenticated) {
-      setError("Please verify your Google account before proceeding.");
-      return;
-    }
     if (!fullName.trim() || fullName.trim().length < 3) {
       setError("Legal Full Name must be at least 3 characters.");
       return;
@@ -270,7 +266,13 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     setError(null);
     setIsLoading(true);
     try {
-      await doctorApi.submitOnboardStep1({ fullName: fullName.trim(), contactNumber: contactNumber.trim(), speciality });
+      if (isAuthenticated) {
+        await doctorApi.submitOnboardStep1({
+          fullName: fullName.trim(),
+          contactNumber: contactNumber.trim(),
+          speciality,
+        });
+      }
       setCurrentStep(2);
     } catch (err: any) {
       setError(err.message || "Failed to save step 1.");
@@ -280,23 +282,43 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   };
 
   const handleNextStep2 = async () => {
-    if (!practiceName.trim()) { setError("Practice name is required."); return; }
-    if (!practiceAddress.trim()) { setError("Address is required."); return; }
-    if (!pincode.trim() || !/^\d{6}$/.test(pincode)) { setError("Valid 6-digit Pincode is required."); return; }
-    if (!operatorName.trim() || !/^[6-9]\d{9}$/.test(operatorMobile)) { setError("Valid operator name and phone required."); return; }
+    if (!practiceName.trim()) {
+      setError("Practice name is required.");
+      return;
+    }
+    if (!practiceAddress.trim()) {
+      setError("Address is required.");
+      return;
+    }
+    if (!pincode.trim() || !/^\d{6}$/.test(pincode)) {
+      setError("Valid 6-digit Pincode is required.");
+      return;
+    }
+    if (!operatorName.trim() || !/^[6-9]\d{9}$/.test(operatorMobile)) {
+      setError("Valid operator name and phone required.");
+      return;
+    }
     setError(null);
     setIsLoading(true);
     try {
-      await doctorApi.submitOnboardStep2({
-        practiceName: practiceName.trim(),
-        practiceAddress: practiceAddress.trim(),
-        district: district.trim(),
-        city: (city || district).trim(),
-        state: state.trim() || "Bihar",
-        pincode: pincode.trim(),
-        operatorName: operatorName.trim(),
-        operatorMobile: operatorMobile.trim(),
-      });
+      if (isAuthenticated) {
+        await doctorApi.submitOnboardStep2({
+          practiceName: practiceName.trim(),
+          practiceAddress: practiceAddress.trim(),
+          district: district.trim(),
+          city: (city || district).trim(),
+          state: state.trim() || "Bihar",
+          pincode: pincode.trim(),
+          operatorName: operatorName.trim(),
+          operatorMobile: operatorMobile.trim(),
+          receptionist1Name: receptionist1Name.trim() || undefined,
+          receptionist1Phone: receptionist1Phone.trim() || undefined,
+          receptionist2Name: receptionist2Name.trim() || undefined,
+          receptionist2Phone: receptionist2Phone.trim() || undefined,
+          receptionist3Name: receptionist3Name.trim() || undefined,
+          receptionist3Phone: receptionist3Phone.trim() || undefined,
+        });
+      }
       setCurrentStep(3);
     } catch (err: any) {
       setError(err.message || "Failed to save step 2.");
@@ -306,26 +328,33 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   };
 
   const handleNextStep3 = async () => {
-    if (!medicalRegistrationNumber.trim()) { setError("Registration Number is required."); return; }
-    if (!profilePhotoUrl || !clinicPhotoUrl || !degreeCertificateUrl || !nmcCertificateUrl) { setError("Please upload all required documents."); return; }
+    if (!medicalRegistrationNumber.trim()) {
+      setError("Registration Number is required.");
+      return;
+    }
     setError(null);
     setIsLoading(true);
     try {
-      await doctorApi.submitOnboardStep3({
-        qualifications: qualifications.trim(),
-        experience: parseInt(experience, 10) || 0,
-        medicalRegistrationNumber: medicalRegistrationNumber.trim(),
-        medicalCouncil,
-        registrationYear: parseInt(registrationYear, 10) || 2000,
-        specialization: speciality,
-        profilePhoto: profilePhotoUrl,
-        clinicPhoto: clinicPhotoUrl,
-        degreeCertificate: degreeCertificateUrl,
-        nmcCertificate: nmcCertificateUrl,
-        languages: languages.trim(),
-        bio: bio.trim(),
-        gender,
-      });
+      if (isAuthenticated) {
+        await doctorApi.submitOnboardStep3({
+          qualifications: qualifications.trim(),
+          experience: parseInt(experience, 10) || 0,
+          medicalRegistrationNumber: medicalRegistrationNumber.trim(),
+          medicalCouncil,
+          registrationYear: parseInt(registrationYear, 10) || 2000,
+          specialization: speciality,
+          profilePhoto: profilePhotoUrl,
+          clinicPhoto: clinicPhotoUrl,
+          degreeCertificate: degreeCertificateUrl,
+          nmcCertificate: nmcCertificateUrl,
+          languages: languages.trim(),
+          bio: bio.trim(),
+          gender,
+          lifetimePatientsDeclaration: lifetimePatientsDeclaration
+            ? parseInt(lifetimePatientsDeclaration, 10)
+            : undefined,
+        });
+      }
       setCurrentStep(4);
     } catch (err: any) {
       setError(err.message || "Failed to save step 3.");
@@ -336,7 +365,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   const handleFinalSubmit = async () => {
     const feeNum = parseInt(consultationFee, 10);
-    if (!acceptedTerms) { setError("Please agree to the terms."); return; }
+    if (!acceptedTerms) {
+      setError("Please agree to the terms.");
+      return;
+    }
+    if (!isAuthenticated) {
+      setError("Please verify your Google account before submitting application.");
+      return;
+    }
     setError(null);
     setIsLoading(true);
     try {
