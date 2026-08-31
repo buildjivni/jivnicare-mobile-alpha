@@ -77,8 +77,9 @@ export const DoctorTabNavigator: React.FC = () => {
         {activeTab === "PROFILE" && (
           <DoctorProfileScreen onLogout={() => useAuthStore.getState().clearAuth()} />
         )}
-        {activeTab === "BILLING" && <BillingScreen />}
-        {activeTab === "PERFORMANCE" && <PerformanceScreen />}
+        {activeTab === "PERFORMANCE" && (
+          <PerformanceScreen onBack={() => setActiveTab("OVERVIEW")} />
+        )}
       </View>
 
       {/* Floating Bottom Tab Bar */}

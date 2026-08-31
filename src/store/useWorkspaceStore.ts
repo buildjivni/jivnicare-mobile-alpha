@@ -51,7 +51,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         verificationNote: doc.verificationNote || doc.rejectionReason || "",
         profileCompleteness: 100,
         jivnicarePatientsServed: doc.jivnicarePatientsServed || 0,
-        lifetimePatientsDeclaration: doc.lifetimePatientsServed != null ? String(doc.lifetimePatientsServed) : "",
+        lifetimePatientsDeclaration:
+          doc.lifetimePatientsDeclaration != null
+            ? String(doc.lifetimePatientsDeclaration)
+            : doc.lifetimePatientsServed != null
+            ? String(doc.lifetimePatientsServed)
+            : "",
         registrationStep: doc.registrationStep || 1,
         medicalCouncil: doc.medicalCouncil || "",
         registrationYear: doc.registrationYear,
