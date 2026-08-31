@@ -77,7 +77,9 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 }) => {
   const { user, isAuthenticated, setAuth } = useAuthStore();
   const [currentStep, setCurrentStep] = useState(initialStep);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isStepLoading, setIsStepLoading] = useState(false);
+  const [isDocUploading, setIsDocUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [specialtiesList, setSpecialtiesList] = useState<string[]>([]);
   const isHydratedRef = useRef(false);
@@ -217,7 +219,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   }, []);
 
   const handleGoogleVerify = async () => {
-    setIsLoading(true);
+    setIsGoogleLoading(true);
     setError(null);
     try {
       const res = await authApi.signInWithGoogle();
@@ -228,7 +230,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (err: any) {
       setError(err.message || "Failed to verify Google account.");
     } finally {
-      setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -240,7 +242,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         quality: 0.8,
       });
       if (!result.canceled && result.assets[0]?.uri) {
-        setIsLoading(true);
+        setIsDocUploading(true);
         const uploaded = await uploadApi.uploadFile(result.assets[0].uri);
         if (type === "profile") setProfilePhotoUrl(uploaded);
         if (type === "clinic") setClinicPhotoUrl(uploaded);
@@ -250,7 +252,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (e: any) {
       Alert.alert("Upload Failed", e.message || "Could not upload file");
     } finally {
-      setIsLoading(false);
+      setIsDocUploading(false);
     }
   };
 
@@ -264,7 +266,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       return;
     }
     setError(null);
-    setIsLoading(true);
+    setIsStepLoading(true);
     try {
       if (isAuthenticated) {
         await doctorApi.submitOnboardStep1({
@@ -277,7 +279,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (err: any) {
       setError(err.message || "Failed to save step 1.");
     } finally {
-      setIsLoading(false);
+      setIsStepLoading(false);
     }
   };
 
@@ -299,7 +301,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       return;
     }
     setError(null);
-    setIsLoading(true);
+    setIsStepLoading(true);
     try {
       if (isAuthenticated) {
         await doctorApi.submitOnboardStep2({
@@ -323,7 +325,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (err: any) {
       setError(err.message || "Failed to save step 2.");
     } finally {
-      setIsLoading(false);
+      setIsStepLoading(false);
     }
   };
 
@@ -333,7 +335,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       return;
     }
     setError(null);
-    setIsLoading(true);
+    setIsStepLoading(true);
     try {
       if (isAuthenticated) {
         await doctorApi.submitOnboardStep3({
@@ -359,7 +361,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (err: any) {
       setError(err.message || "Failed to save step 3.");
     } finally {
-      setIsLoading(false);
+      setIsStepLoading(false);
     }
   };
 
@@ -374,7 +376,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       return;
     }
     setError(null);
-    setIsLoading(true);
+    setIsStepLoading(true);
     try {
       await doctorApi.submitOnboardStep4({
         weeklySchedule,
@@ -388,7 +390,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     } catch (err: any) {
       setError(err.message || "Failed to submit application.");
     } finally {
-      setIsLoading(false);
+      setIsStepLoading(false);
     }
   };
 
@@ -471,7 +473,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       title="Verify"
                       variant="primary"
                       size="sm"
-                      loading={isLoading}
+                      loading={isGoogleLoading}
                       onPress={handleGoogleVerify}
                     />
                   )}
@@ -542,7 +544,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                 variant="primary"
                 size="lg"
                 onPress={handleNextStep1}
-                loading={isLoading}
+                loading={isStepLoading}
                 icon={<ArrowRight size={18} color="#FFFFFF" />}
                 iconPosition="right"
                 style={{ marginTop: 20 }}
@@ -766,7 +768,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   variant="primary"
                   size="lg"
                   onPress={handleNextStep2}
-                  loading={isLoading}
+                  loading={isStepLoading}
                   style={{ flex: 2 }}
                 />
               </View>
@@ -996,7 +998,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   variant="primary"
                   size="lg"
                   onPress={handleNextStep3}
-                  loading={isLoading}
+                  loading={isStepLoading}
                   style={{ flex: 2 }}
                 />
               </View>
@@ -1157,7 +1159,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   variant="secondary"
                   size="lg"
                   onPress={handleFinalSubmit}
-                  loading={isLoading}
+                  loading={isStepLoading}
                   disabled={!acceptedTerms}
                   style={{ flex: 2 }}
                 />

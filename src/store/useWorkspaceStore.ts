@@ -9,6 +9,7 @@ interface WorkspaceState {
   isLoading: boolean;
   error: string | null;
   fetchWorkspace: () => Promise<void>;
+  clearWorkspace: () => void;
   updateLocalProfile: (partial: Partial<DoctorProfile>) => void;
   updateLocalSettings: (partial: Partial<DoctorSettings>) => void;
 }
@@ -97,6 +98,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     } catch (err: any) {
       set({ isLoading: false, error: err.message || "Failed to load doctor workspace" });
     }
+  },
+
+  clearWorkspace: () => {
+    set({
+      profile: null,
+      settings: null,
+      weeklySchedule: null,
+      isLoading: false,
+      error: null,
+    });
   },
 
   updateLocalProfile: (partial) => {

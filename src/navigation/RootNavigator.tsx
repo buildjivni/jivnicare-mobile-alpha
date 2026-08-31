@@ -46,13 +46,35 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
-  // 1. Authenticated User Flow
+  // 1. If currently in onboarding flow, always render DoctorOnboardWizard
+  if (authScreen === "ONBOARD") {
+    return (
+      <DoctorOnboardWizard
+        initialStep={profile?.registrationStep || 1}
+        onComplete={() => {
+          useWorkspaceStore.getState().fetchWorkspace();
+          setAuthScreen("LOGIN");
+        }}
+        onExit={() => {
+          if (isAuthenticated) {
+            useAuthStore.getState().clearAuth();
+          }
+          setAuthScreen("INTRO");
+        }}
+      />
+    );
+  }
+
+  // 2. Authenticated User Flow
   if (isAuthenticated && user) {
-    // If registration is incomplete (new signup), take doctor to the 4-step wizard
-    if (user.role === "DOCTOR" && profile && !profile.registrationComplete && profile.verificationStatus === "DRAFT") {
+    // If registration is not verified/completed, keep doctor in onboarding wizard
+    if (
+      user.role === "DOCTOR" &&
+      (!profile || !profile.registrationComplete || profile.verificationStatus === "DRAFT")
+    ) {
       return (
         <DoctorOnboardWizard
-          initialStep={profile.registrationStep || 1}
+          initialStep={profile?.registrationStep || 1}
           onComplete={() => useWorkspaceStore.getState().fetchWorkspace()}
           onExit={() => useAuthStore.getState().clearAuth()}
         />
@@ -62,7 +84,7 @@ export const RootNavigator: React.FC = () => {
     return <DoctorTabNavigator />;
   }
 
-  // 2. Unauthenticated Flow
+  // 3. Unauthenticated Flow
   if (authScreen === "LOGIN") {
     return (
       <DoctorSignInScreen
@@ -72,15 +94,6 @@ export const RootNavigator: React.FC = () => {
             setAuthScreen("ONBOARD");
           }
         }}
-      />
-    );
-  }
-
-  if (authScreen === "ONBOARD") {
-    return (
-      <DoctorOnboardWizard
-        onComplete={() => setAuthScreen("LOGIN")}
-        onExit={() => setAuthScreen("INTRO")}
       />
     );
   }

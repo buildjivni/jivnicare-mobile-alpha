@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { AuthState, AuthUser } from "../types/auth";
 import * as SecureStore from "expo-secure-store";
+import { useWorkspaceStore } from "./useWorkspaceStore";
 
 const TOKEN_KEY = "jivnicare_doctor_token";
 const USER_KEY = "jivnicare_doctor_user";
@@ -28,6 +29,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (e) {
       // Secure store fallback
     }
+    useWorkspaceStore.getState().clearWorkspace();
     set({ user: null, token: null, isAuthenticated: false, isLoading: false });
   },
 
