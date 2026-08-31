@@ -38,6 +38,11 @@ export const authApi = {
       // 1. Ensure Google Play Services are available
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+      // Always clear cached session so the account chooser dialog is shown every time
+      try {
+        await GoogleSignin.signOut();
+      } catch (_) {}
+
       // 2. Open native Android Google account picker
       const response = await GoogleSignin.signIn();
 

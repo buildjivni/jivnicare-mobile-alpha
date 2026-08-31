@@ -483,7 +483,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   label="Legal Full Name (with Dr. prefix)"
                   placeholder="Dr. Rajesh Kumar"
                   value={fullName}
-                  onChangeText={setFullName}
+                  onChangeText={(val) => setFullName(val.replace(/[^a-zA-Z\s.]/g, ""))}
                   leftIcon={<User size={18} color={colors.primary} />}
                 />
 
@@ -491,8 +491,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   label="Doctor Contact Mobile Number"
                   placeholder="10-digit mobile number"
                   value={contactNumber}
-                  onChangeText={setContactNumber}
-                  keyboardType="phone-pad"
+                  onChangeText={(val) => setContactNumber(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                  keyboardType="numeric"
                   maxLength={10}
                   leftIcon={<Phone size={18} color={colors.primary} />}
                   helper="Used for verification SMS and important practice alerts."
@@ -583,14 +583,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     label="District"
                     placeholder="e.g. Jamui"
                     value={district}
-                    onChangeText={setDistrict}
+                    onChangeText={(val) => setDistrict(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
                   <Input
                     containerStyle={{ flex: 1 }}
                     label="City / Town"
                     placeholder="e.g. Jamui"
                     value={city}
-                    onChangeText={setCity}
+                    onChangeText={(val) => setCity(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
                 </View>
 
@@ -600,14 +600,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     label="State"
                     placeholder="Bihar"
                     value={state}
-                    onChangeText={setState}
+                    onChangeText={(val) => setState(val.replace(/[^a-zA-Z\s]/g, ""))}
                   />
                   <Input
                     containerStyle={{ flex: 1 }}
                     label="Pincode"
                     placeholder="6 digits"
                     value={pincode}
-                    onChangeText={setPincode}
+                    onChangeText={(val) => setPincode(val.replace(/[^0-9]/g, "").slice(0, 6))}
                     keyboardType="numeric"
                     maxLength={6}
                   />
@@ -625,15 +625,15 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   label="Operator Full Name"
                   placeholder="e.g. Amit Kumar"
                   value={operatorName}
-                  onChangeText={setOperatorName}
+                  onChangeText={(val) => setOperatorName(val.replace(/[^a-zA-Z\s.]/g, ""))}
                 />
 
                 <Input
                   label="Operator Mobile Number (10 digits)"
                   placeholder="e.g. 9876543210"
                   value={operatorMobile}
-                  onChangeText={setOperatorMobile}
-                  keyboardType="phone-pad"
+                  onChangeText={(val) => setOperatorMobile(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                  keyboardType="numeric"
                   maxLength={10}
                   helper="Will be provisioned with instant Operator Portal credentials."
                 />
@@ -665,14 +665,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       label="Staff Full Name"
                       placeholder="e.g. Priya Sharma"
                       value={receptionist1Name}
-                      onChangeText={setReceptionist1Name}
+                      onChangeText={(val) => setReceptionist1Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
                     />
                     <Input
                       label="10-digit Mobile"
                       placeholder="e.g. 9876543211"
                       value={receptionist1Phone}
-                      onChangeText={setReceptionist1Phone}
-                      keyboardType="phone-pad"
+                      onChangeText={(val) => setReceptionist1Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                      keyboardType="numeric"
                       maxLength={10}
                     />
                   </View>
@@ -697,14 +697,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       label="Staff Full Name"
                       placeholder="e.g. Rahul Verma"
                       value={receptionist2Name}
-                      onChangeText={setReceptionist2Name}
+                      onChangeText={(val) => setReceptionist2Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
                     />
                     <Input
                       label="10-digit Mobile"
                       placeholder="e.g. 9876543212"
                       value={receptionist2Phone}
-                      onChangeText={setReceptionist2Phone}
-                      keyboardType="phone-pad"
+                      onChangeText={(val) => setReceptionist2Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                      keyboardType="numeric"
                       maxLength={10}
                     />
                   </View>
@@ -729,14 +729,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       label="Staff Full Name"
                       placeholder="e.g. Sunita Devi"
                       value={receptionist3Name}
-                      onChangeText={setReceptionist3Name}
+                      onChangeText={(val) => setReceptionist3Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
                     />
                     <Input
                       label="10-digit Mobile"
                       placeholder="e.g. 9876543213"
                       value={receptionist3Phone}
-                      onChangeText={setReceptionist3Phone}
-                      keyboardType="phone-pad"
+                      onChangeText={(val) => setReceptionist3Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                      keyboardType="numeric"
                       maxLength={10}
                     />
                   </View>
@@ -823,7 +823,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     label="Registration Year"
                     placeholder="e.g. 2018"
                     value={registrationYear}
-                    onChangeText={setRegistrationYear}
+                    onChangeText={(val) => setRegistrationYear(val.replace(/[^0-9]/g, "").slice(0, 4))}
                     keyboardType="numeric"
                     maxLength={4}
                   />
@@ -832,7 +832,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     label="Experience (Years)"
                     placeholder="e.g. 12"
                     value={experience}
-                    onChangeText={setExperience}
+                    onChangeText={(val) => setExperience(val.replace(/[^0-9]/g, "").slice(0, 2))}
                     keyboardType="numeric"
                     maxLength={2}
                   />
@@ -888,7 +888,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   label="Career Patients Treated (Declaration)"
                   placeholder="e.g. 2500"
                   value={lifetimePatientsDeclaration}
-                  onChangeText={setLifetimePatientsDeclaration}
+                  onChangeText={(val) => setLifetimePatientsDeclaration(val.replace(/[^0-9]/g, ""))}
                   keyboardType="numeric"
                   helper="Displayed as an achievement badge on your public booking profile."
                 />
@@ -1021,7 +1021,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   label="Standard OPD Consultation Fee (₹)"
                   placeholder="e.g. 400"
                   value={consultationFee}
-                  onChangeText={setConsultationFee}
+                  onChangeText={(val) => setConsultationFee(val.replace(/[^0-9]/g, ""))}
                   keyboardType="numeric"
                   leftIcon={<DollarSign size={16} color={colors.primary} />}
                 />
@@ -1050,7 +1050,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     label="Emergency Consultation Fee (₹)"
                     placeholder="e.g. 600"
                     value={emergencyFee}
-                    onChangeText={setEmergencyFee}
+                    onChangeText={(val) => setEmergencyFee(val.replace(/[^0-9]/g, ""))}
                     keyboardType="numeric"
                     leftIcon={<Zap size={16} color="#EF4444" />}
                     helper="Applied when issuing emergency tokens with priority queueing."
