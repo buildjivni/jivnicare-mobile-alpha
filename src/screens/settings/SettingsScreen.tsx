@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect } from "react-native-svg";
 import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
 import { Input } from "../../components/ui/Input";
@@ -35,6 +36,7 @@ import {
   Camera,
   CalendarX,
   AlertTriangle,
+  ChevronRight,
 } from "lucide-react-native";
 
 export const SettingsScreen: React.FC = () => {
@@ -42,6 +44,8 @@ export const SettingsScreen: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<"IDENTITY" | "OPERATIONS" | "SCHEDULE" | "HOLIDAY" | "EXPERTISE" | "STAFF">("IDENTITY");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [scrollAtEnd, setScrollAtEnd] = useState(false);
+  const subTabScrollRef = useRef<ScrollView>(null);
 
   // 1. Pending Profile Update Requests
   const [profileRequests, setProfileRequests] = useState<any[]>([]);
@@ -271,26 +275,63 @@ export const SettingsScreen: React.FC = () => {
       </View>
 
       {/* Sub Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subTabScroll} contentContainerStyle={styles.subTabRow}>
-        {[
-          { key: "IDENTITY", label: "Clinic Identity" },
-          { key: "OPERATIONS", label: "Operations" },
-          { key: "SCHEDULE", label: "Schedule" },
-          { key: "HOLIDAY", label: "Leave & Holidays" },
-          { key: "EXPERTISE", label: "Expertise" },
-          { key: "STAFF", label: "Staff" },
-        ].map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.subTab, activeSubTab === t.key && styles.subTabActive]}
-            onPress={() => setActiveSubTab(t.key as any)}
-          >
-            <Text style={[styles.subTabText, activeSubTab === t.key && styles.subTabTextActive]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.subTabWrapper}>
+        <ScrollView
+          ref={subTabScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.subTabScroll}
+          contentContainerStyle={styles.subTabRow}
+          keyboardShouldPersistTaps="handled"
+          bounces={true}
+          overScrollMode="always"
+          onScroll={(e) => {
+            const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+            const isEnd = layoutMeasurement.width + contentOffset.x >= contentSize.width - 25;
+            setScrollAtEnd(isEnd);
+          }}
+          scrollEventThrottle={16}
+        >
+          {[
+            { key: "IDENTITY", label: "Clinic Identity" },
+            { key: "OPERATIONS", label: "Operations" },
+            { key: "SCHEDULE", label: "Schedule" },
+            { key: "HOLIDAY", label: "Leave & Holidays" },
+            { key: "EXPERTISE", label: "Expertise" },
+            { key: "STAFF", label: "Staff" },
+          ].map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.subTab, activeSubTab === t.key && styles.subTabActive]}
+              onPress={() => {
+                setActiveSubTab(t.key as any);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.subTabText, activeSubTab === t.key && styles.subTabTextActive]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {!scrollAtEnd && (
+          <View pointerEvents="none" style={styles.trailingFade}>
+            <Svg height="100%" width="100%">
+              <Defs>
+                <SvgGradient id="subTabFade" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0" />
+                  <Stop offset="0.6" stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
+                </SvgGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#subTabFade)" />
+            </Svg>
+            <View style={styles.scrollCueIcon}>
+              <ChevronRight size={14} color={colors.textMuted} />
+            </View>
+          </View>
+        )}
+      </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* ── PENDING PROFILE CHANGE REQUESTS BANNER (Matching Web) ── */}
@@ -668,35 +709,59 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: "none",
   },
-  subTabScroll: {
-    maxHeight: 48,
+  subTabWrapper: {
+    position: "relative",
+    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
-    backgroundColor: colors.surface,
+  },
+  subTabScroll: {
+    maxHeight: 52,
   },
   subTabRow: {
     flexDirection: "row",
-    paddingHorizontal: 20,
+    paddingLeft: 16,
+    paddingRight: 48,
     gap: 8,
     alignItems: "center",
+    paddingVertical: 8,
   },
   subTab: {
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: radius.full,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   subTabActive: {
-    borderBottomColor: colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   subTabText: {
     ...typography.caption,
     color: colors.textSecondary,
     fontWeight: "700",
+    fontSize: 12,
     textTransform: "none",
   },
   subTabTextActive: {
-    color: colors.primary,
+    color: "#FFFFFF",
+  },
+  trailingFade: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    justifyContent: "center",
+    alignItems: "flex-end",
+  },
+  scrollCueIcon: {
+    position: "absolute",
+    right: 6,
+    top: "50%",
+    transform: [{ translateY: -7 }],
   },
   scrollContent: {
     paddingHorizontal: 20,
