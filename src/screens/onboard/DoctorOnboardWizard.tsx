@@ -219,6 +219,10 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
   }, [currentStep, fullName, contactNumber, speciality, practiceName, practiceAddress, district, city, state, pincode, latitude, longitude, operatorName, operatorMobile, receptionist1Name, receptionist1Phone, receptionist2Name, receptionist2Phone, receptionist3Name, receptionist3Phone, visibleReceptionistCount, medicalRegistrationNumber, medicalCouncil, otherCouncilName, registrationYear, experience, qualifications, gender, languages, bio, lifetimePatientsDeclaration, profilePhotoUrl, clinicPhotoUrl, degreeCertificateUrl, nmcCertificateUrl, consultationFee, emergencyAvailable, emergencyFee, bookingStartTime, weeklySchedule, storageKey]);
 
   useEffect(() => {
+    setError(null);
+  }, [currentStep]);
+
+  useEffect(() => {
     const handleBack = () => {
       if (currentStep > 1) {
         setCurrentStep((prev) => prev - 1);
@@ -310,10 +314,15 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
 
   const handlePickImage = async (type: "profile" | "clinic" | "degree" | "nmc") => {
     try {
+      // 1:1 Square for Doctor Profile Photo, 16:9 Banner for Clinic Cover Photo, 4:3 for Documents
+      const aspect: [number, number] =
+        type === "profile" ? [1, 1] : type === "clinic" ? [16, 9] : [4, 3];
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        aspect,
+        quality: 0.85,
       });
       if (!result.canceled && result.assets[0]?.uri) {
         const localUri = result.assets[0].uri;
@@ -342,7 +351,14 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         if (type === "degree") setDegreeCertificateUrl(finalUrl);
         if (type === "nmc") setNmcCertificateUrl(finalUrl);
 
-        Alert.alert("Photo Attached", "Your document has been attached to your registration profile.");
+        Alert.alert(
+          "Photo Attached",
+          type === "profile"
+            ? "Doctor profile photo cropped (1:1 square) and attached."
+            : type === "clinic"
+            ? "Clinic banner photo cropped (16:9 widescreen) and attached."
+            : "Document attached successfully."
+        );
       }
     } catch (e: any) {
       Alert.alert("Selection Failed", e.message || "Could not select image. Please try again.");
@@ -1222,6 +1238,9 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
               {/* Pricing Card */}
               <Card style={styles.formCard}>
                 <Text style={styles.cardHeadingTitle}>Consultation Fees & Availability</Text>
+                <Text style={styles.cardSubText}>
+                  Set your standard appointment fees and emergency consultation rates in INR (₹).
+                </Text>
 
                 <Input
                   label="Standard OPD Consultation Fee (₹)"
@@ -1229,7 +1248,12 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   value={consultationFee}
                   onChangeText={(val) => setConsultationFee(val.replace(/[^0-9]/g, ""))}
                   keyboardType="numeric"
-                  leftIcon={<DollarSign size={16} color={colors.primary} />}
+                  leftIcon={
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.primary }}>
+                      ₹
+                    </Text>
+                  }
+                  helper="Standard token consultation fee collected per patient visit."
                 />
 
                 {/* Emergency Toggle */}
@@ -1237,7 +1261,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                   <View style={{ flex: 1, marginRight: 12 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Zap size={15} color="#EF4444" />
-                      <Text style={styles.switchTitle}>Emergency Consultation Slots</Text>
+                      <Text style={styles.switchTitle}>Emergency Walk-in Consultations</Text>
                     </View>
                     <Text style={styles.switchSub}>
                       Accept urgent walk-in emergency consultations alongside regular OPD shifts.
@@ -1258,17 +1282,21 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                     value={emergencyFee}
                     onChangeText={(val) => setEmergencyFee(val.replace(/[^0-9]/g, ""))}
                     keyboardType="numeric"
-                    leftIcon={<Zap size={16} color="#EF4444" />}
-                    helper="Applied when issuing emergency tokens with priority queueing."
+                    leftIcon={
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: "#EF4444" }}>
+                        ₹
+                      </Text>
+                    }
+                    helper="Applied when issuing emergency priority tokens."
                   />
                 )}
 
                 <Input
-                  label="Daily Booking Window Start Time"
+                  label="Daily Token Booking Start Time"
                   placeholder="08:00"
                   value={bookingStartTime}
                   onChangeText={setBookingStartTime}
-                  helper="When patients can start booking online tokens each morning."
+                  helper="When online token booking opens for patients each morning."
                 />
               </Card>
 
