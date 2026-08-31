@@ -1,6 +1,7 @@
 import { useAuthStore } from "../store/useAuthStore";
 
-export const DEFAULT_API_BASE_URL = "https://www.jivnicare.com";
+// Real Live Production Backend Domain
+export const DEFAULT_API_BASE_URL = "https://www.jinnicare.com";
 
 export class ApiError extends Error {
   status: number;
