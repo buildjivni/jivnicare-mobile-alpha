@@ -8,6 +8,7 @@ interface WorkspaceState {
   weeklySchedule: WeeklySchedule | null;
   isLoading: boolean;
   error: string | null;
+  isDraftDoctor: boolean;
   fetchWorkspace: () => Promise<void>;
   clearWorkspace: () => void;
   updateLocalProfile: (partial: Partial<DoctorProfile>) => void;
@@ -20,11 +21,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   weeklySchedule: null,
   isLoading: true,
   error: null,
+  isDraftDoctor: false,
 
   fetchWorkspace: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await doctorApi.getProfile();
+      const response = await doctorApi.getProfile({ skipAuthClear: true });
       const doc = response.doctor;
       if (!doc) {
         throw new Error("No doctor profile returned");
@@ -88,15 +90,38 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         statusExpiresAt: null,
       };
 
+      const isDraft = !doc.registrationComplete || doc.verificationStatus === "DRAFT";
+
       set({
         profile,
         settings,
         weeklySchedule: doc.weeklySchedule || null,
         isLoading: false,
         error: null,
+        isDraftDoctor: isDraft,
       });
     } catch (err: any) {
-      set({ isLoading: false, error: err.message || "Failed to load doctor workspace" });
+      if (err?.status === 401 || err?.status === 404) {
+        // Confirmed that no profile exists on the backend yet (unregistered / draft doctor)
+        set({
+          profile: null,
+          settings: null,
+          weeklySchedule: null,
+          isLoading: false,
+          error: null,
+          isDraftDoctor: true,
+        });
+      } else {
+        // Real fetch error (network, timeout, 500 server error)
+        set({
+          profile: null,
+          settings: null,
+          weeklySchedule: null,
+          isLoading: false,
+          error: err?.message || "Failed to load doctor workspace. Please check your internet connection.",
+          isDraftDoctor: false,
+        });
+      }
     }
   },
 
@@ -107,6 +132,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       weeklySchedule: null,
       isLoading: false,
       error: null,
+      isDraftDoctor: false,
     });
   },
 

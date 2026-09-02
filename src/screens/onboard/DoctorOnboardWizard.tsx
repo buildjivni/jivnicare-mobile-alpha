@@ -24,6 +24,7 @@ import { uploadApi } from "../../api/upload";
 import { authApi } from "../../api/auth";
 import { apiClient } from "../../api/client";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import {
   User,
   Building2,
@@ -44,9 +45,13 @@ import {
   RefreshCw,
   ChevronDown,
   X,
+  UserCheck,
+  Award,
+  FileText,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import { OnboardSuccessReceiptScreen } from "./OnboardSuccessReceiptScreen";
 
 export interface DoctorOnboardWizardProps {
   initialStep?: number;
@@ -149,12 +154,67 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     sunday: { isOpen: false, start: "09:00", end: "14:00", maxPatients: 0 },
   });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [submittedReceipt, setSubmittedReceipt] = useState<{ registrationId: string } | null>(null);
 
   const storageKey = user?.id ? `jc_onboard_draft_${user.id}` : user?.email ? `jc_onboard_draft_${user.email}` : "jc_onboard_draft_guest";
 
   useEffect(() => {
     const hydrateDraft = async () => {
       try {
+        // 1. Backend-driven hydration: Fetch existing database profile if user is authenticated
+        if (isAuthenticated) {
+          try {
+            const profileRes = await doctorApi.getProfile({ skipAuthClear: true });
+            const doc = profileRes?.doctor;
+            if (doc) {
+              if (doc.name) setFullName(doc.name);
+              if (doc.phone) setContactNumber(doc.phone);
+              if (doc.speciality) setSpeciality(doc.speciality);
+              if (doc.clinicName) setPracticeName(doc.clinicName);
+              if (doc.clinicAddress) setPracticeAddress(doc.clinicAddress);
+              if (doc.clinicDistrict) setDistrict(doc.clinicDistrict);
+              if (doc.clinicCity) setCity(doc.clinicCity);
+              if (doc.clinicState) setState(doc.clinicState);
+              if (doc.clinicPincode) setPincode(doc.clinicPincode);
+              if (doc.clinicLatitude != null) setLatitude(doc.clinicLatitude);
+              if (doc.clinicLongitude != null) setLongitude(doc.clinicLongitude);
+              if (doc.operatorName) setOperatorName(doc.operatorName);
+              if (doc.operatorMobile) setOperatorMobile(doc.operatorMobile);
+              if (doc.receptionist1Name) setReceptionist1Name(doc.receptionist1Name);
+              if (doc.receptionist1Phone) setReceptionist1Phone(doc.receptionist1Phone);
+              if (doc.receptionist2Name) setReceptionist2Name(doc.receptionist2Name);
+              if (doc.receptionist2Phone) setReceptionist2Phone(doc.receptionist2Phone);
+              if (doc.receptionist3Name) setReceptionist3Name(doc.receptionist3Name);
+              if (doc.receptionist3Phone) setReceptionist3Phone(doc.receptionist3Phone);
+              if (doc.registrationNumber) setRegistrationNumber(doc.registrationNumber);
+              if (doc.medicalCouncil) setMedicalCouncil(doc.medicalCouncil);
+              if (doc.registrationYear) setRegistrationYear(String(doc.registrationYear));
+              if (doc.experienceYears != null) setExperience(String(doc.experienceYears));
+              if (Array.isArray(doc.qualifications)) setQualifications(doc.qualifications.join(", "));
+              if (doc.gender) setGender(doc.gender);
+              if (Array.isArray(doc.languages)) setLanguages(doc.languages.join(", "));
+              if (doc.bio) setBio(doc.bio);
+              if (doc.profilePhoto) setProfilePhotoUrl(doc.profilePhoto);
+              if (doc.clinicPhotos?.[0]) setClinicPhotoUrl(doc.clinicPhotos[0]);
+              if (doc.documents?.[0]) setDegreeCertificateUrl(doc.documents[0]);
+              if (doc.documents?.[1]) setNmcCertificateUrl(doc.documents[1]);
+              if (doc.consultationFee != null) setConsultationFee(String(doc.consultationFee));
+              if (doc.emergencyFee != null) {
+                setEmergencyAvailable(true);
+                setEmergencyFee(String(doc.emergencyFee));
+              }
+              if (doc.bookingWindowStart) setBookingStartTime(doc.bookingWindowStart);
+              if (doc.weeklySchedule) setWeeklySchedule(doc.weeklySchedule);
+              if (doc.registrationStep && doc.registrationStep > 1 && doc.registrationStep <= 4) {
+                setCurrentStep(doc.registrationStep);
+              }
+            }
+          } catch (apiErr) {
+            console.log("[Backend hydration note]", apiErr);
+          }
+        }
+
+        // 2. Offline / local draft hydration
         let savedDraftStr = await SecureStore.getItemAsync(storageKey);
         if (!savedDraftStr) {
           savedDraftStr = await SecureStore.getItemAsync("jc_doctor_onboarding_master_draft");
@@ -164,7 +224,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
         }
         if (savedDraftStr) {
           const draft = JSON.parse(savedDraftStr);
-          if (draft.step) setCurrentStep(draft.step);
+          if (draft.step && (!initialStep || initialStep <= 1)) setCurrentStep(draft.step);
           if (draft.fullName) setFullName(draft.fullName);
           if (draft.contactNumber) setContactNumber(draft.contactNumber);
           if (draft.speciality) setSpeciality(draft.speciality);
@@ -211,7 +271,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       }
     };
     hydrateDraft();
-  }, [storageKey]);
+  }, []);
 
   useEffect(() => {
     if (!isHydratedRef.current) return;
@@ -311,7 +371,59 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       const res = await authApi.signInWithGoogle();
       if (res.success && res.user) {
         setAuth(res.user, res.token || "session_active");
-        if (res.user.name && !fullName) setFullName(res.user.name);
+        if (res.user.name && (!fullName || fullName.trim() === "")) {
+          const autoName = res.user.name.startsWith("Dr.") ? res.user.name : `Dr. ${res.user.name}`;
+          setFullName(autoName);
+        }
+        // Save current draft immediately under the newly authenticated user storage
+        const currentDraft = {
+          step: currentStep,
+          fullName: fullName || res.user.name || "",
+          contactNumber,
+          speciality,
+          practiceName,
+          practiceAddress,
+          district,
+          city,
+          state,
+          pincode,
+          latitude,
+          longitude,
+          operatorName,
+          operatorMobile,
+          receptionist1Name,
+          receptionist1Phone,
+          receptionist2Name,
+          receptionist2Phone,
+          receptionist3Name,
+          receptionist3Phone,
+          visibleReceptionistCount,
+          medicalRegistrationNumber,
+          medicalCouncil,
+          otherCouncilName,
+          registrationYear,
+          experience,
+          qualifications,
+          gender,
+          languages,
+          bio,
+          lifetimePatientsDeclaration,
+          profilePhotoUrl,
+          clinicPhotoUrl,
+          degreeCertificateUrl,
+          nmcCertificateUrl,
+          consultationFee,
+          emergencyAvailable,
+          emergencyFee,
+          bookingStartTime,
+          weeklySchedule,
+        };
+        const json = JSON.stringify(currentDraft);
+        const userKey = `jc_onboard_draft_${res.user.id}`;
+        SecureStore.setItemAsync(userKey, json).catch(() => {});
+        SecureStore.setItemAsync("jc_doctor_onboarding_master_draft", json).catch(() => {});
+      } else if (!res.cancelled) {
+        setError(res.error || "Failed to verify Google account.");
       }
     } catch (err: any) {
       setError(err.message || "Failed to verify Google account.");
@@ -385,7 +497,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       setError("Legal Full Name must be at least 3 characters.");
       return;
     }
-    if (!/^[6-9]\d{9}$/.test(contactNumber)) {
+    if (!/^[6-9]\d{9}$/.test(contactNumber.trim())) {
       setError("Valid 10-digit Indian mobile number required.");
       return;
     }
@@ -393,17 +505,18 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     setIsStepLoading(true);
     try {
       if (isAuthenticated) {
-        await doctorApi.submitOnboardStep1({
+        const res = await doctorApi.submitOnboardStep1({
           fullName: fullName.trim(),
           contactNumber: contactNumber.trim(),
           speciality,
-        }).catch((e) => {
-          console.log("[Onboard Step 1 API sync note]", e?.message);
         });
+        if (res?.token && res?.user) {
+          setAuth(res.user, res.token);
+        }
       }
       setCurrentStep(2);
     } catch (err: any) {
-      setCurrentStep(2);
+      setError(err?.message || "Failed to save Step 1. Please try again.");
     } finally {
       setIsStepLoading(false);
     }
@@ -447,13 +560,11 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           receptionist2Phone: receptionist2Phone.trim() || undefined,
           receptionist3Name: receptionist3Name.trim() || undefined,
           receptionist3Phone: receptionist3Phone.trim() || undefined,
-        }).catch((e) => {
-          console.log("[Onboard Step 2 API sync note]", e?.message);
         });
       }
       setCurrentStep(3);
     } catch (err: any) {
-      setCurrentStep(3);
+      setError(err?.message || "Failed to save Step 2. Please try again.");
     } finally {
       setIsStepLoading(false);
     }
@@ -494,13 +605,11 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           lifetimePatientsDeclaration: lifetimePatientsDeclaration
             ? parseInt(lifetimePatientsDeclaration, 10)
             : undefined,
-        }).catch((e) => {
-          console.log("[Onboard Step 3 API sync note]", e?.message);
         });
       }
       setCurrentStep(4);
     } catch (err: any) {
-      setCurrentStep(4);
+      setError(err?.message || "Failed to save Step 3. Please try again.");
     } finally {
       setIsStepLoading(false);
     }
@@ -519,41 +628,28 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     setError(null);
     setIsStepLoading(true);
     try {
-      await doctorApi.submitOnboardStep4({
+      const res = await doctorApi.submitOnboardStep4({
         weeklySchedule,
         consultationFee: feeNum,
         emergencyAvailable,
         emergencyFee: emergencyAvailable ? parseInt(emergencyFee, 10) : null,
         bookingStartTime,
-      }).catch((e) => {
-        console.log("[Onboard Step 4 final sync note]", e?.message);
       });
+
+      const regId = res?.registrationId || "JVC2026D10001";
 
       await SecureStore.deleteItemAsync(storageKey).catch(() => {});
       await SecureStore.deleteItemAsync("jc_doctor_onboarding_master_draft").catch(() => {});
       await SecureStore.deleteItemAsync("jc_onboard_draft_guest").catch(() => {});
 
-      Alert.alert(
-        "Application Submitted Successfully! 🎉",
-        "Your clinical credentials and practice details have been submitted to the JivniCare Medical Verification Board. Your profile will be reviewed within 24 hours.",
-        [
-          {
-            text: "Done",
-            onPress: () => onComplete(),
-          },
-        ]
-      );
+      // Pre-hydrate the completed doctor profile into workspace store immediately
+      try {
+        await useWorkspaceStore.getState().fetchWorkspace();
+      } catch (_) {}
+
+      setSubmittedReceipt({ registrationId: regId });
     } catch (err: any) {
-      Alert.alert(
-        "Application Submitted",
-        "Your onboarding application has been saved and submitted for verification.",
-        [
-          {
-            text: "OK",
-            onPress: () => onComplete(),
-          },
-        ]
-      );
+      setError(err?.message || "Failed to submit application. Please check all details and try again.");
     } finally {
       setIsStepLoading(false);
     }
@@ -572,6 +668,25 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
       [dayKey]: { ...prev[dayKey], [field]: field === "maxPatients" ? parseInt(String(value), 10) || 0 : value },
     }));
   };
+
+  if (submittedReceipt) {
+    return (
+      <OnboardSuccessReceiptScreen
+        registrationId={submittedReceipt.registrationId}
+        fullName={fullName}
+        medicalRegistrationNumber={medicalRegistrationNumber}
+        medicalCouncil={otherCouncilName.trim() || medicalCouncil}
+        speciality={speciality}
+        practiceName={practiceName}
+        city={city}
+        district={district}
+        onGoToDashboard={async () => {
+          await onComplete();
+        }}
+        onReturnHome={() => onExit()}
+      />
+    );
+  }
 
   return (
     <ScreenContainer style={styles.safeArea}>
@@ -625,107 +740,109 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* STEP 1: Doctor Identity & Core Contact                    */}
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 1 && (
-            <View>
-              <Text style={styles.stepTitle}>Doctor Identity & Contact</Text>
-              <Text style={styles.stepSubtitle}>
-                Provide your primary contact and clinical specialty details for NMC-verified directory listing.
-              </Text>
+            <View style={styles.stepInnerWrapper}>
+              <View>
+                <Text style={styles.stepTitle}>Doctor Identity & Contact</Text>
+                <Text style={styles.stepSubtitle}>
+                  Provide your primary contact and clinical specialty details for NMC-verified directory listing.
+                </Text>
 
-              {/* Google Verification Status Card */}
-              <Card style={styles.googleVerifyCard}>
-                <View style={styles.googleVerifyRow}>
-                  <View
-                    style={[
-                      styles.googleVerifyIconBox,
-                      isAuthenticated && { backgroundColor: "#ECFDF5" },
-                    ]}
-                  >
-                    {isAuthenticated ? (
-                      <Check size={18} color={colors.secondary} />
-                    ) : (
-                      <Lock size={18} color={colors.primary} />
+                {/* Google Verification Status Card */}
+                <Card style={styles.googleVerifyCard}>
+                  <View style={styles.googleVerifyRow}>
+                    <View
+                      style={[
+                        styles.googleVerifyIconBox,
+                        isAuthenticated && { backgroundColor: "#ECFDF5" },
+                      ]}
+                    >
+                      {isAuthenticated ? (
+                        <Check size={18} color={colors.secondary} />
+                      ) : (
+                        <Lock size={18} color={colors.primary} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.googleVerifyTitle}>
+                        {isAuthenticated ? "Google Account Linked" : "Google Authentication"}
+                      </Text>
+                      <Text style={styles.googleVerifySub} numberOfLines={1}>
+                        {isAuthenticated && user?.email
+                          ? user.email
+                          : "Required to secure your clinical portal"}
+                      </Text>
+                    </View>
+                    {!isAuthenticated && (
+                      <Button
+                        title="Verify"
+                        variant="primary"
+                        size="sm"
+                        loading={isGoogleLoading}
+                        onPress={handleGoogleVerify}
+                      />
                     )}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.googleVerifyTitle}>
-                      {isAuthenticated ? "Google Account Linked" : "Google Authentication"}
-                    </Text>
-                    <Text style={styles.googleVerifySub} numberOfLines={1}>
-                      {isAuthenticated && user?.email
-                        ? user.email
-                        : "Required to secure your clinical portal"}
-                    </Text>
-                  </View>
-                  {!isAuthenticated && (
-                    <Button
-                      title="Verify"
-                      variant="primary"
-                      size="sm"
-                      loading={isGoogleLoading}
-                      onPress={handleGoogleVerify}
-                    />
-                  )}
-                </View>
-              </Card>
+                </Card>
 
-              <Card style={styles.formCard}>
-                <Input
-                  label="Legal Full Name (with Dr. prefix)"
-                  placeholder="e.g. Dr. Rajesh Kumar"
-                  value={fullName}
-                  onChangeText={(val) => setFullName(val.replace(/[^a-zA-Z\s.]/g, ""))}
-                  leftIcon={<User size={18} color={colors.primary} />}
-                />
+                <Card style={styles.formCard}>
+                  <Input
+                    label="Legal Full Name (with Dr. prefix)"
+                    placeholder="e.g. Dr. Rajesh Kumar"
+                    value={fullName}
+                    onChangeText={(val) => setFullName(val.replace(/[^a-zA-Z\s.]/g, ""))}
+                    leftIcon={<User size={18} color={colors.primary} />}
+                  />
 
-                <Input
-                  label="Doctor Contact Mobile Number"
-                  placeholder="10-digit mobile number"
-                  value={contactNumber}
-                  onChangeText={(val) => setContactNumber(val.replace(/[^0-9]/g, "").slice(0, 10))}
-                  keyboardType="numeric"
-                  maxLength={10}
-                  leftIcon={<Phone size={18} color={colors.primary} />}
-                  helper="Used for verification SMS and important practice alerts."
-                />
+                  <Input
+                    label="Doctor Contact Mobile Number"
+                    placeholder="10-digit mobile number"
+                    value={contactNumber}
+                    onChangeText={(val) => setContactNumber(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                    keyboardType="numeric"
+                    maxLength={10}
+                    leftIcon={<Phone size={18} color={colors.primary} />}
+                    helper="Used for verification SMS and important practice alerts."
+                  />
 
-                <Text style={styles.fieldLabel}>Primary Specialization</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.specialityPillRow}
-                >
-                  {(specialtiesList.length > 0
-                    ? specialtiesList
-                    : [
-                        "General Physician",
-                        "Dentist",
-                        "Cardiologist",
-                        "Pediatrician",
-                        "Dermatologist & Cosmetologist",
-                        "Orthopedic Surgeon",
-                        "Gynecologist & Obstetrician",
-                      ]
-                  ).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[
-                        styles.specialityPill,
-                        speciality === s && styles.specialityPillActive,
-                      ]}
-                      onPress={() => setSpeciality(s)}
-                    >
-                      <Text
+                  <Text style={styles.fieldLabel}>Primary Specialization</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.specialityPillRow}
+                  >
+                    {(specialtiesList.length > 0
+                      ? specialtiesList
+                      : [
+                          "General Physician",
+                          "Dentist",
+                          "Cardiologist",
+                          "Pediatrician",
+                          "Dermatologist & Cosmetologist",
+                          "Orthopedic Surgeon",
+                          "Gynecologist & Obstetrician",
+                        ]
+                    ).map((s) => (
+                      <TouchableOpacity
+                        key={s}
                         style={[
-                          styles.specialityPillText,
-                          speciality === s && styles.specialityPillTextActive,
+                          styles.specialityPill,
+                          speciality === s && styles.specialityPillActive,
                         ]}
+                        onPress={() => setSpeciality(s)}
                       >
-                        {s}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Card>
+                        <Text
+                          style={[
+                            styles.specialityPillText,
+                            speciality === s && styles.specialityPillTextActive,
+                          ]}
+                        >
+                          {s}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </Card>
+              </View>
 
               <Button
                 title="Continue to Clinic & Staff"
@@ -735,7 +852,7 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                 loading={isStepLoading}
                 icon={<ArrowRight size={18} color="#FFFFFF" />}
                 iconPosition="right"
-                style={{ marginTop: 14 }}
+                style={styles.stepActionBtn}
               />
             </View>
           )}
@@ -744,252 +861,244 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* STEP 2: Clinic Location & Clinic Staff Pre-registration  */}
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 2 && (
-            <View>
-              <Text style={styles.stepTitle}>Clinic Location & Staff</Text>
-              <Text style={styles.stepSubtitle}>
-                Enter your practice premises and pre-configure staff accounts for instant front-desk access upon verification.
-              </Text>
-
-              {/* Clinic Identity & Address with GPS Auto-Detection */}
-              <Card style={styles.formCard}>
-                <View style={styles.gpsHeaderRow}>
-                  <View style={styles.gpsIconBox}>
-                    <Building2 size={20} color="#D97706" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardHeadingTitle}>Clinic Location & Address</Text>
-                    <Text style={styles.cardSubText}>
-                      Enable GPS to automatically detect your clinic's location across India.
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={handleFetchGPSLocation}
-                    disabled={gpsLoading}
-                    style={[
-                      styles.gpsButton,
-                      gpsStatus === "success" && styles.gpsButtonSuccess,
-                      gpsStatus === "error" && styles.gpsButtonError,
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    {gpsLoading ? (
-                      <View style={styles.gpsButtonContent}>
-                        <RefreshCw size={13} color="#0284C7" />
-                        <Text style={[styles.gpsButtonText, { color: "#0284C7" }]}>Locating...</Text>
-                      </View>
-                    ) : gpsStatus === "success" ? (
-                      <View style={styles.gpsButtonContent}>
-                        <CheckCircle2 size={13} color="#059669" />
-                        <Text style={[styles.gpsButtonText, { color: "#059669" }]}>Located!</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.gpsButtonContent}>
-                        <MapPin size={13} color={colors.primary} />
-                        <Text style={styles.gpsButtonText}>Use GPS</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                {gpsStatus === "error" && (
-                  <View style={styles.gpsErrorBanner}>
-                    <AlertCircle size={14} color={colors.destructive} />
-                    <Text style={styles.gpsErrorText}>
-                      {gpsErrorMessage || "GPS detection failed. Please type your location manually below."}
-                    </Text>
-                  </View>
-                )}
-
-                <Input
-                  label="Practice / Clinic / Hospital Name"
-                  placeholder="e.g. City Care Clinic"
-                  value={practiceName}
-                  onChangeText={setPracticeName}
-                />
-
-                <Input
-                  label="Complete Street Address"
-                  placeholder="e.g. Shop No. 5, Ground Floor, Main Road"
-                  value={practiceAddress}
-                  onChangeText={setPracticeAddress}
-                  multiline
-                />
-
-                <View style={styles.twoColumnRow}>
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="District"
-                    placeholder="e.g. Patna / Ranchi"
-                    value={district}
-                    onChangeText={(val) => setDistrict(val.replace(/[^a-zA-Z\s]/g, ""))}
-                  />
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="City / Town"
-                    placeholder="e.g. Patna / Ranchi"
-                    value={city}
-                    onChangeText={(val) => setCity(val.replace(/[^a-zA-Z\s]/g, ""))}
-                  />
-                </View>
-
-                <View style={styles.twoColumnRow}>
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="State"
-                    placeholder="e.g. Bihar / Jharkhand / Delhi"
-                    value={state}
-                    onChangeText={(val) => setState(val.replace(/[^a-zA-Z\s]/g, ""))}
-                  />
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="Pincode"
-                    placeholder="6 digits"
-                    value={pincode}
-                    onChangeText={(val) => setPincode(val.replace(/[^0-9]/g, "").slice(0, 6))}
-                    keyboardType="numeric"
-                    maxLength={6}
-                  />
-                </View>
-              </Card>
-
-              {/* Primary Operator */}
-              <Card style={styles.formCard}>
-                <Text style={styles.cardHeadingTitle}>Primary Clinic Operator</Text>
-                <Text style={styles.cardSubText}>
-                  Staff member managing the live OPD queue counter and patient check-in.
+            <View style={styles.stepInnerWrapper}>
+              <View>
+                <Text style={styles.stepTitle}>Clinic Location & Staff</Text>
+                <Text style={styles.stepSubtitle}>
+                  Enter your practice premises and pre-configure staff accounts for instant front-desk access upon verification.
                 </Text>
 
-                <Input
-                  label="Operator Full Name"
-                  placeholder="e.g. Amit Kumar"
-                  value={operatorName}
-                  onChangeText={(val) => setOperatorName(val.replace(/[^a-zA-Z\s.]/g, ""))}
-                />
-
-                <Input
-                  label="Operator Mobile Number (10 digits)"
-                  placeholder="e.g. 9876543210"
-                  value={operatorMobile}
-                  onChangeText={(val) => setOperatorMobile(val.replace(/[^0-9]/g, "").slice(0, 10))}
-                  keyboardType="numeric"
-                  maxLength={10}
-                  helper="Will be provisioned with instant Operator Portal credentials."
-                />
-              </Card>
-
-              {/* Pre-registered Receptionists (Up to 3) */}
-              <Card style={styles.formCard}>
-                <Text style={styles.cardHeadingTitle}>Pre-Register Receptionists (Optional)</Text>
-                <Text style={styles.cardSubText}>
-                  Pre-configure up to 3 front-desk receptionists so their logins are ready immediately.
-                </Text>
-
-                {/* Receptionist 1 */}
-                {(visibleReceptionistCount >= 1 || receptionist1Name || receptionist1Phone) && (
-                  <View style={styles.receptionistCardBox}>
-                    <View style={styles.receptionistCardHeader}>
-                      <Text style={styles.receptionistCardTitle}>Receptionist 1</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setReceptionist1Name("");
-                          setReceptionist1Phone("");
-                          setVisibleReceptionistCount((c) => Math.max(0, c - 1));
-                        }}
-                      >
-                        <Trash2 size={16} color={colors.destructive} />
-                      </TouchableOpacity>
+                {/* Clinic Identity & Address with GPS Auto-Detection */}
+                <Card style={styles.formCard}>
+                  <View style={styles.gpsHeaderRow}>
+                    <View style={styles.gpsIconBox}>
+                      <Building2 size={20} color="#D97706" />
                     </View>
-                    <Input
-                      label="Staff Full Name"
-                      placeholder="e.g. Priya Sharma"
-                      value={receptionist1Name}
-                      onChangeText={(val) => setReceptionist1Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
-                    />
-                    <Input
-                      label="10-digit Mobile"
-                      placeholder="e.g. 9876543211"
-                      value={receptionist1Phone}
-                      onChangeText={(val) => setReceptionist1Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
-                      keyboardType="numeric"
-                      maxLength={10}
-                    />
-                  </View>
-                )}
-
-                {/* Receptionist 2 */}
-                {(visibleReceptionistCount >= 2 || receptionist2Name || receptionist2Phone) && (
-                  <View style={styles.receptionistCardBox}>
-                    <View style={styles.receptionistCardHeader}>
-                      <Text style={styles.receptionistCardTitle}>Receptionist 2</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setReceptionist2Name("");
-                          setReceptionist2Phone("");
-                          setVisibleReceptionistCount((c) => Math.max(1, c - 1));
-                        }}
-                      >
-                        <Trash2 size={16} color={colors.destructive} />
-                      </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardHeadingTitle}>Clinic Location & Address</Text>
+                      <Text style={styles.cardSubText}>
+                        Enable GPS to automatically detect your clinic's location across India.
+                      </Text>
                     </View>
-                    <Input
-                      label="Staff Full Name"
-                      placeholder="e.g. Rahul Verma"
-                      value={receptionist2Name}
-                      onChangeText={(val) => setReceptionist2Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
-                    />
-                    <Input
-                      label="10-digit Mobile"
-                      placeholder="e.g. 9876543212"
-                      value={receptionist2Phone}
-                      onChangeText={(val) => setReceptionist2Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
-                      keyboardType="numeric"
-                      maxLength={10}
-                    />
                   </View>
-                )}
 
-                {/* Receptionist 3 */}
-                {(visibleReceptionistCount >= 3 || receptionist3Name || receptionist3Phone) && (
-                  <View style={styles.receptionistCardBox}>
-                    <View style={styles.receptionistCardHeader}>
-                      <Text style={styles.receptionistCardTitle}>Receptionist 3</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setReceptionist3Name("");
-                          setReceptionist3Phone("");
-                          setVisibleReceptionistCount((c) => Math.max(2, c - 1));
-                        }}
-                      >
-                        <Trash2 size={16} color={colors.destructive} />
-                      </TouchableOpacity>
-                    </View>
-                    <Input
-                      label="Staff Full Name"
-                      placeholder="e.g. Sunita Devi"
-                      value={receptionist3Name}
-                      onChangeText={(val) => setReceptionist3Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
-                    />
-                    <Input
-                      label="10-digit Mobile"
-                      placeholder="e.g. 9876543213"
-                      value={receptionist3Phone}
-                      onChangeText={(val) => setReceptionist3Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
-                      keyboardType="numeric"
-                      maxLength={10}
-                    />
-                  </View>
-                )}
-
-                {visibleReceptionistCount < 3 && (
                   <Button
-                    title={`+ Add Receptionist ${visibleReceptionistCount + 1}`}
+                    title={gpsLoading ? "Acquiring GPS Location..." : "Auto-Detect Current Clinic GPS"}
                     variant="outline"
                     size="sm"
-                    onPress={() => setVisibleReceptionistCount((c) => Math.min(3, c + 1))}
-                    style={{ marginTop: 8 }}
+                    loading={gpsLoading}
+                    onPress={handleFetchGPSLocation}
+                    icon={<MapPin size={16} color={colors.primary} />}
+                    style={{ marginBottom: 12 }}
                   />
-                )}
-              </Card>
+
+                  {gpsStatus === "success" && (
+                    <View style={styles.gpsSuccessBox}>
+                      <CheckCircle2 size={16} color={colors.secondary} />
+                      <Text style={styles.gpsSuccessText}>
+                        Location auto-detected ({latitude?.toFixed(4)}, {longitude?.toFixed(4)})
+                      </Text>
+                    </View>
+                  )}
+
+                  {gpsStatus === "error" && (
+                    <View style={styles.gpsErrorBox}>
+                      <AlertCircle size={16} color={colors.destructive} />
+                      <Text style={styles.gpsErrorText}>{gpsErrorMessage}</Text>
+                    </View>
+                  )}
+
+                  <Input
+                    label="Clinic / Practice Name"
+                    placeholder="e.g. Apollo Clinic / Kumar Healthcare"
+                    value={practiceName}
+                    onChangeText={setPracticeName}
+                    leftIcon={<Building2 size={18} color={colors.primary} />}
+                  />
+
+                  <Input
+                    label="Full Clinic Street Address"
+                    placeholder="e.g. Shop 4, Ground Floor, Main Road"
+                    value={practiceAddress}
+                    onChangeText={setPracticeAddress}
+                    leftIcon={<MapPin size={18} color={colors.primary} />}
+                  />
+
+                  <View style={styles.twoColumnRow}>
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="District"
+                      placeholder="e.g. Patna / Ranchi"
+                      value={district}
+                      onChangeText={setDistrict}
+                    />
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="City / Town"
+                      placeholder="e.g. Patna"
+                      value={city}
+                      onChangeText={setCity}
+                    />
+                  </View>
+
+                  <View style={styles.twoColumnRow}>
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="State"
+                      placeholder="e.g. Bihar / Jharkhand"
+                      value={state}
+                      onChangeText={setState}
+                    />
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="Pincode"
+                      placeholder="6-digit pincode"
+                      value={pincode}
+                      onChangeText={(val) => setPincode(val.replace(/[^0-9]/g, "").slice(0, 6))}
+                      keyboardType="numeric"
+                      maxLength={6}
+                    />
+                  </View>
+                </Card>
+
+                {/* Primary Clinic Operator Card */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Primary Clinic Operator</Text>
+                  <Text style={styles.cardSubText}>
+                    Dedicated manager authorized to manage OPD queues and collect payments.
+                  </Text>
+
+                  <Input
+                    label="Operator Full Name"
+                    placeholder="e.g. Amit Sharma"
+                    value={operatorName}
+                    onChangeText={(val) => setOperatorName(val.replace(/[^a-zA-Z\s.]/g, ""))}
+                    leftIcon={<UserCheck size={18} color={colors.primary} />}
+                  />
+
+                  <Input
+                    label="Operator Mobile Number"
+                    placeholder="10-digit mobile number"
+                    value={operatorMobile}
+                    onChangeText={(val) => setOperatorMobile(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                    keyboardType="numeric"
+                    maxLength={10}
+                    leftIcon={<Phone size={18} color={colors.primary} />}
+                    helper="Operator will sign in with this number to manage OPD queues."
+                  />
+                </Card>
+
+                {/* Optional Receptionist Accounts */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Clinic Reception Staff (Optional)</Text>
+                  <Text style={styles.cardSubText}>
+                    Pre-register up to 3 receptionists for token distribution and queue assistance.
+                  </Text>
+
+                  {visibleReceptionistCount >= 1 && (
+                    <View style={styles.receptionistCardBox}>
+                      <View style={styles.receptionistCardHeader}>
+                        <Text style={styles.receptionistCardTitle}>Receptionist 1</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReceptionist1Name("");
+                            setReceptionist1Phone("");
+                            setVisibleReceptionistCount((c) => Math.max(0, c - 1));
+                          }}
+                        >
+                          <X size={16} color="#94A3B8" />
+                        </TouchableOpacity>
+                      </View>
+                      <Input
+                        label="Full Name"
+                        placeholder="e.g. Priya Singh"
+                        value={receptionist1Name}
+                        onChangeText={(val) => setReceptionist1Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
+                      />
+                      <Input
+                        label="10-digit Mobile"
+                        placeholder="e.g. 9876543211"
+                        value={receptionist1Phone}
+                        onChangeText={(val) => setReceptionist1Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                        keyboardType="numeric"
+                        maxLength={10}
+                      />
+                    </View>
+                  )}
+
+                  {visibleReceptionistCount >= 2 && (
+                    <View style={styles.receptionistCardBox}>
+                      <View style={styles.receptionistCardHeader}>
+                        <Text style={styles.receptionistCardTitle}>Receptionist 2</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReceptionist2Name("");
+                            setReceptionist2Phone("");
+                            setVisibleReceptionistCount((c) => Math.max(1, c - 1));
+                          }}
+                        >
+                          <X size={16} color="#94A3B8" />
+                        </TouchableOpacity>
+                      </View>
+                      <Input
+                        label="Full Name"
+                        placeholder="e.g. Rahul Verma"
+                        value={receptionist2Name}
+                        onChangeText={(val) => setReceptionist2Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
+                      />
+                      <Input
+                        label="10-digit Mobile"
+                        placeholder="e.g. 9876543212"
+                        value={receptionist2Phone}
+                        onChangeText={(val) => setReceptionist2Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                        keyboardType="numeric"
+                        maxLength={10}
+                      />
+                    </View>
+                  )}
+
+                  {visibleReceptionistCount >= 3 && (
+                    <View style={styles.receptionistCardBox}>
+                      <View style={styles.receptionistCardHeader}>
+                        <Text style={styles.receptionistCardTitle}>Receptionist 3</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReceptionist3Name("");
+                            setReceptionist3Phone("");
+                            setVisibleReceptionistCount((c) => Math.max(2, c - 1));
+                          }}
+                        >
+                          <X size={16} color="#94A3B8" />
+                        </TouchableOpacity>
+                      </View>
+                      <Input
+                        label="Full Name"
+                        placeholder="e.g. Sunita Devi"
+                        value={receptionist3Name}
+                        onChangeText={(val) => setReceptionist3Name(val.replace(/[^a-zA-Z\s.]/g, ""))}
+                      />
+                      <Input
+                        label="10-digit Mobile"
+                        placeholder="e.g. 9876543213"
+                        value={receptionist3Phone}
+                        onChangeText={(val) => setReceptionist3Phone(val.replace(/[^0-9]/g, "").slice(0, 10))}
+                        keyboardType="numeric"
+                        maxLength={10}
+                      />
+                    </View>
+                  )}
+
+                  {visibleReceptionistCount < 3 && (
+                    <Button
+                      title={`+ Add Receptionist ${visibleReceptionistCount + 1}`}
+                      variant="outline"
+                      size="sm"
+                      onPress={() => setVisibleReceptionistCount((c) => Math.min(3, c + 1))}
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
+                </Card>
+              </View>
 
               <View style={styles.buttonRow}>
                 <Button
@@ -1015,231 +1124,189 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* STEP 3: Medical Credentials & Clinical Profile           */}
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 3 && (
-            <View>
-              <Text style={styles.stepTitle}>Credentials & Verification</Text>
-              <Text style={styles.stepSubtitle}>
-                NMC registration details, clinical qualifications, biography, and verification documents.
-              </Text>
+            <View style={styles.stepInnerWrapper}>
+              <View>
+                <Text style={styles.stepTitle}>Credentials & Verification</Text>
+                <Text style={styles.stepSubtitle}>
+                  Provide your official Medical Council registration credentials and professional qualifications.
+                </Text>
 
-              <Card style={styles.formCard}>
-                <Input
-                  label="Medical Registration Number"
-                  placeholder="e.g. BMC-54892"
-                  value={medicalRegistrationNumber}
-                  onChangeText={setRegistrationNumber}
-                />
+                {/* Medical Council & Registration Card */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Medical Registration</Text>
 
-                <Text style={styles.fieldLabel}>State Medical Council</Text>
-                <TouchableOpacity
-                  style={styles.selectTrigger}
-                  onPress={() => setIsCouncilModalVisible(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.selectTriggerText}>
-                    {medicalCouncil || "Select State Medical Council"}
-                  </Text>
-                  <ChevronDown size={18} color="#64748B" />
-                </TouchableOpacity>
-
-                {medicalCouncil === "Other State Medical Council" && (
                   <Input
-                    label="Specify Other State Medical Council *"
-                    placeholder="e.g. Karnataka Medical Council"
-                    value={otherCouncilName}
-                    onChangeText={setOtherCouncilName}
-                    containerStyle={{ marginBottom: 14 }}
+                    label="State Medical Council Registration No."
+                    placeholder="e.g. 65432-A"
+                    value={medicalRegistrationNumber}
+                    onChangeText={setRegistrationNumber}
+                    leftIcon={<Award size={18} color={colors.primary} />}
                   />
-                )}
 
-                <View style={styles.twoColumnRow}>
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="Registration Year"
-                    placeholder="e.g. 2018"
-                    value={registrationYear}
-                    onChangeText={(val) => setRegistrationYear(val.replace(/[^0-9]/g, "").slice(0, 4))}
-                    keyboardType="numeric"
-                    maxLength={4}
-                  />
-                  <Input
-                    containerStyle={{ flex: 1 }}
-                    label="Experience (Years)"
-                    placeholder="e.g. 12"
-                    value={experience}
-                    onChangeText={(val) => setExperience(val.replace(/[^0-9]/g, "").slice(0, 2))}
-                    keyboardType="numeric"
-                    maxLength={2}
-                  />
-                </View>
+                  <Text style={styles.fieldLabel}>State Medical Council</Text>
+                  <TouchableOpacity
+                    style={styles.selectTrigger}
+                    onPress={() => setIsCouncilModalVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.selectTriggerText}>
+                      {medicalCouncil}
+                    </Text>
+                    <ChevronDown size={18} color="#64748B" />
+                  </TouchableOpacity>
 
-                <Input
-                  label="Qualifications (comma separated)"
-                  placeholder="e.g. MBBS, MD (Medicine)"
-                  value={qualifications}
-                  onChangeText={setQualifications}
-                />
+                  {medicalCouncil === "Other" && (
+                    <Input
+                      label="Enter Other Medical Council Name"
+                      placeholder="e.g. National Board of Examinations"
+                      value={otherCouncilName}
+                      onChangeText={setOtherCouncilName}
+                      containerStyle={{ marginBottom: 14 }}
+                    />
+                  )}
 
-                {/* Gender selection */}
-                <Text style={styles.fieldLabel}>Gender</Text>
-                <View style={styles.genderRow}>
-                  {GENDERS.map((g) => (
-                    <TouchableOpacity
-                      key={g}
-                      style={[
-                        styles.genderPill,
-                        gender === g && styles.genderPillActive,
-                      ]}
-                      onPress={() => setGender(g)}
-                    >
-                      <Text
-                        style={[
-                          styles.genderPillText,
-                          gender === g && styles.genderPillTextActive,
-                        ]}
-                      >
-                        {g}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Input
-                  label="Languages Spoken"
-                  placeholder="e.g. Hindi, English, Maithili"
-                  value={languages}
-                  onChangeText={setLanguages}
-                />
-
-                <Input
-                  label="Short Biography & Practice Focus"
-                  placeholder="Briefly introduce your clinical philosophy, specialty focus, and background..."
-                  value={bio}
-                  onChangeText={setBio}
-                  multiline
-                />
-
-                <Input
-                  label="Career Patients Treated (Declaration)"
-                  placeholder="e.g. 2500"
-                  value={lifetimePatientsDeclaration}
-                  onChangeText={(val) => setLifetimePatientsDeclaration(val.replace(/[^0-9]/g, ""))}
-                  keyboardType="numeric"
-                  helper="Displayed as an achievement badge on your public booking profile."
-                />
-              </Card>
-
-              {/* Documents & Photos Upload Card */}
-              <Card style={styles.formCard}>
-                <Text style={styles.cardHeadingTitle}>Verification Documents & Photos</Text>
-
-                {/* 1. Doctor Profile Photo */}
-                <View style={styles.uploadRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.uploadLabel}>Doctor Profile Photo *</Text>
-                    <Text style={styles.uploadSub}>Formal headshot for patient trust</Text>
+                  <View style={styles.twoColumnRow}>
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="Registration Year"
+                      placeholder="e.g. 2012"
+                      value={registrationYear}
+                      onChangeText={(val) => setRegistrationYear(val.replace(/[^0-9]/g, "").slice(0, 4))}
+                      keyboardType="numeric"
+                      maxLength={4}
+                    />
+                    <Input
+                      containerStyle={{ flex: 1 }}
+                      label="Experience (Years)"
+                      placeholder="e.g. 12"
+                      value={experience}
+                      onChangeText={(val) => setExperience(val.replace(/[^0-9]/g, "").slice(0, 2))}
+                      keyboardType="numeric"
+                      maxLength={2}
+                    />
                   </View>
-                  {profilePhotoUrl ? (
-                    <TouchableOpacity
-                      style={styles.uploadedBadge}
-                      onPress={() => handlePickImage("profile")}
-                      activeOpacity={0.7}
-                    >
-                      <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
-                    </TouchableOpacity>
-                  ) : (
+
+                  <Input
+                    label="Degrees & Qualifications"
+                    placeholder="e.g. MBBS, MD (General Medicine)"
+                    value={qualifications}
+                    onChangeText={setQualifications}
+                    leftIcon={<FileText size={18} color={colors.primary} />}
+                  />
+
+                  <Input
+                    label="Consultation Languages"
+                    placeholder="e.g. Hindi, English, Bengali"
+                    value={languages}
+                    onChangeText={setLanguages}
+                  />
+
+                  <Input
+                    label="Lifetime Patients Served (Estimate)"
+                    placeholder="e.g. 15000"
+                    value={lifetimePatientsDeclaration}
+                    onChangeText={(val) => setLifetimePatientsDeclaration(val.replace(/[^0-9]/g, ""))}
+                    keyboardType="numeric"
+                    helper="Approximate total patients treated in your career across all clinics."
+                  />
+                </Card>
+
+                {/* Document & Photo Uploads Card */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Photo & Credentials Upload</Text>
+                  <Text style={styles.cardSubText}>
+                    Upload your profile photo, clinic exterior, and medical degree for patient trust verification.
+                  </Text>
+
+                  {/* Profile Photo */}
+                  <View style={styles.uploadRowBox}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadRowTitle}>Doctor Profile Photo</Text>
+                      <Text style={styles.uploadRowSub}>Square portrait with doctor coat (Max 5MB)</Text>
+                    </View>
                     <Button
-                      title="Upload"
-                      variant="outline"
+                      title={profilePhotoUrl ? "Change" : "Upload"}
+                      variant={profilePhotoUrl ? "outline" : "primary"}
                       size="sm"
                       loading={uploadingField === "profile"}
-                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("profile")}
+                      icon={<Upload size={14} color={profilePhotoUrl ? colors.primary : "#FFFFFF"} />}
                     />
-                  )}
-                </View>
-
-                {/* 2. Clinic Photo */}
-                <View style={styles.uploadRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.uploadLabel}>Clinic Cover Photo *</Text>
-                    <Text style={styles.uploadSub}>Front facade or reception area</Text>
                   </View>
-                  {clinicPhotoUrl ? (
-                    <TouchableOpacity
-                      style={styles.uploadedBadge}
-                      onPress={() => handlePickImage("clinic")}
-                      activeOpacity={0.7}
-                    >
-                      <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
-                    </TouchableOpacity>
-                  ) : (
+                  {profilePhotoUrl && (
+                    <View style={styles.uploadSuccessBox}>
+                      <CheckCircle2 size={15} color={colors.secondary} />
+                      <Text style={styles.uploadSuccessText}>Profile photo attached</Text>
+                    </View>
+                  )}
+
+                  {/* Clinic Photo */}
+                  <View style={[styles.uploadRowBox, { marginTop: 12 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadRowTitle}>Clinic Exterior / OPD Room</Text>
+                      <Text style={styles.uploadRowSub}>Premises photo for patient identification</Text>
+                    </View>
                     <Button
-                      title="Upload"
-                      variant="outline"
+                      title={clinicPhotoUrl ? "Change" : "Upload"}
+                      variant={clinicPhotoUrl ? "outline" : "primary"}
                       size="sm"
                       loading={uploadingField === "clinic"}
-                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("clinic")}
+                      icon={<Upload size={14} color={clinicPhotoUrl ? colors.primary : "#FFFFFF"} />}
                     />
-                  )}
-                </View>
-
-                {/* 3. Degree Certificate */}
-                <View style={styles.uploadRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.uploadLabel}>Medical Degree Certificate *</Text>
-                    <Text style={styles.uploadSub}>MBBS / MD / Specialist Degree</Text>
                   </View>
-                  {degreeCertificateUrl ? (
-                    <TouchableOpacity
-                      style={styles.uploadedBadge}
-                      onPress={() => handlePickImage("degree")}
-                      activeOpacity={0.7}
-                    >
-                      <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
-                    </TouchableOpacity>
-                  ) : (
+                  {clinicPhotoUrl && (
+                    <View style={styles.uploadSuccessBox}>
+                      <CheckCircle2 size={15} color={colors.secondary} />
+                      <Text style={styles.uploadSuccessText}>Clinic photo attached</Text>
+                    </View>
+                  )}
+
+                  {/* Degree Certificate */}
+                  <View style={[styles.uploadRowBox, { marginTop: 12 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadRowTitle}>MBBS / Post-Grad Degree</Text>
+                      <Text style={styles.uploadRowSub}>Official degree certificate scan</Text>
+                    </View>
                     <Button
-                      title="Upload"
-                      variant="outline"
+                      title={degreeCertificateUrl ? "Change" : "Upload"}
+                      variant={degreeCertificateUrl ? "outline" : "primary"}
                       size="sm"
                       loading={uploadingField === "degree"}
-                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("degree")}
+                      icon={<Upload size={14} color={degreeCertificateUrl ? colors.primary : "#FFFFFF"} />}
                     />
-                  )}
-                </View>
-
-                {/* 4. NMC Certificate */}
-                <View style={styles.uploadRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.uploadLabel}>NMC / State Registration Certificate *</Text>
-                    <Text style={styles.uploadSub}>Official council certificate with reg #</Text>
                   </View>
-                  {nmcCertificateUrl ? (
-                    <TouchableOpacity
-                      style={styles.uploadedBadge}
-                      onPress={() => handlePickImage("nmc")}
-                      activeOpacity={0.7}
-                    >
-                      <CheckCircle2 size={14} color={colors.secondary} />
-                      <Text style={styles.uploadedBadgeText}>Attached (Change)</Text>
-                    </TouchableOpacity>
-                  ) : (
+                  {degreeCertificateUrl && (
+                    <View style={styles.uploadSuccessBox}>
+                      <CheckCircle2 size={15} color={colors.secondary} />
+                      <Text style={styles.uploadSuccessText}>Degree document attached</Text>
+                    </View>
+                  )}
+
+                  {/* NMC Certificate */}
+                  <View style={[styles.uploadRowBox, { marginTop: 12 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadRowTitle}>NMC / State Council Certificate</Text>
+                      <Text style={styles.uploadRowSub}>Medical Council registration certificate</Text>
+                    </View>
                     <Button
-                      title="Upload"
-                      variant="outline"
+                      title={nmcCertificateUrl ? "Change" : "Upload"}
+                      variant={nmcCertificateUrl ? "outline" : "primary"}
                       size="sm"
                       loading={uploadingField === "nmc"}
-                      disabled={uploadingField !== null}
                       onPress={() => handlePickImage("nmc")}
+                      icon={<Upload size={14} color={nmcCertificateUrl ? colors.primary : "#FFFFFF"} />}
                     />
+                  </View>
+                  {nmcCertificateUrl && (
+                    <View style={styles.uploadSuccessBox}>
+                      <CheckCircle2 size={15} color={colors.secondary} />
+                      <Text style={styles.uploadSuccessText}>Registration certificate attached</Text>
+                    </View>
                   )}
-                </View>
-              </Card>
+                </Card>
+              </View>
 
               <View style={styles.buttonRow}>
                 <Button
@@ -1265,154 +1332,156 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           {/* STEP 4: Operations, Schedule & Consultation Fees         */}
           {/* ═════════════════════════════════════════════════════════ */}
           {currentStep === 4 && (
-            <View>
-              <Text style={styles.stepTitle}>OPD Operations & Pricing</Text>
-              <Text style={styles.stepSubtitle}>
-                Configure your OPD pricing, emergency consultation availability, and weekly shift timings.
-              </Text>
-
-              {/* Pricing Card */}
-              <Card style={styles.formCard}>
-                <Text style={styles.cardHeadingTitle}>Consultation Fees & Availability</Text>
-                <Text style={styles.cardSubText}>
-                  Set your standard appointment fees and emergency consultation rates in INR (₹).
+            <View style={styles.stepInnerWrapper}>
+              <View>
+                <Text style={styles.stepTitle}>OPD Operations & Pricing</Text>
+                <Text style={styles.stepSubtitle}>
+                  Configure your OPD pricing, emergency consultation availability, and weekly shift timings.
                 </Text>
 
-                <Input
-                  label="Standard OPD Consultation Fee (₹)"
-                  placeholder="e.g. 400"
-                  value={consultationFee}
-                  onChangeText={(val) => setConsultationFee(val.replace(/[^0-9]/g, ""))}
-                  keyboardType="numeric"
-                  leftIcon={
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.primary }}>
-                      ₹
-                    </Text>
-                  }
-                  helper="Standard token consultation fee collected per patient visit."
-                />
+                {/* Pricing Card */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Consultation Fees & Availability</Text>
+                  <Text style={styles.cardSubText}>
+                    Set your standard appointment fees and emergency consultation rates in INR (₹).
+                  </Text>
 
-                {/* Emergency Toggle */}
-                <View style={styles.switchRow}>
-                  <View style={{ flex: 1, marginRight: 12 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Zap size={15} color="#EF4444" />
-                      <Text style={styles.switchTitle}>Emergency Walk-in Consultations</Text>
-                    </View>
-                    <Text style={styles.switchSub}>
-                      Accept urgent walk-in emergency consultations alongside regular OPD shifts.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={emergencyAvailable}
-                    onValueChange={setEmergencyAvailable}
-                    trackColor={{ false: "#E2E8F0", true: "#FCA5A5" }}
-                    thumbColor={emergencyAvailable ? "#EF4444" : "#94A3B8"}
-                  />
-                </View>
-
-                {emergencyAvailable && (
                   <Input
-                    label="Emergency Consultation Fee (₹)"
-                    placeholder="e.g. 600"
-                    value={emergencyFee}
-                    onChangeText={(val) => setEmergencyFee(val.replace(/[^0-9]/g, ""))}
+                    label="Standard OPD Consultation Fee (₹)"
+                    placeholder="e.g. 400"
+                    value={consultationFee}
+                    onChangeText={(val) => setConsultationFee(val.replace(/[^0-9]/g, ""))}
                     keyboardType="numeric"
                     leftIcon={
-                      <Text style={{ fontSize: 16, fontWeight: "700", color: "#EF4444" }}>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.primary }}>
                         ₹
                       </Text>
                     }
-                    helper="Applied when issuing emergency priority tokens."
+                    helper="Standard token consultation fee collected per patient visit."
                   />
-                )}
 
-                <Input
-                  label="Daily Token Booking Start Time"
-                  placeholder="08:00"
-                  value={bookingStartTime}
-                  onChangeText={setBookingStartTime}
-                  helper="When online token booking opens for patients each morning."
-                />
-              </Card>
-
-              {/* Weekly Schedule Editor */}
-              <Card style={styles.formCard}>
-                <Text style={styles.cardHeadingTitle}>Weekly OPD Shift Schedule</Text>
-
-                {DAYS_OF_WEEK.map((day) => {
-                  const dayData = weeklySchedule[day.key] || {
-                    isOpen: false,
-                    start: "09:00",
-                    end: "17:00",
-                    maxPatients: 20,
-                  };
-
-                  return (
-                    <View key={day.key} style={styles.dayScheduleBox}>
-                      <View style={styles.dayScheduleHeader}>
-                        <Text style={styles.dayScheduleLabel}>{day.label}</Text>
-                        <Switch
-                          value={dayData.isOpen}
-                          onValueChange={() => handleDayToggle(day.key)}
-                          trackColor={{ false: "#E2E8F0", true: "#A7F3D0" }}
-                          thumbColor={dayData.isOpen ? colors.secondary : "#94A3B8"}
-                        />
+                  {/* Emergency Toggle */}
+                  <View style={styles.switchRow}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Zap size={15} color="#EF4444" />
+                        <Text style={styles.switchTitle}>Emergency Walk-in Consultations</Text>
                       </View>
+                      <Text style={styles.switchSub}>
+                        Accept urgent walk-in emergency consultations alongside regular OPD shifts.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={emergencyAvailable}
+                      onValueChange={setEmergencyAvailable}
+                      trackColor={{ false: "#E2E8F0", true: "#FCA5A5" }}
+                      thumbColor={emergencyAvailable ? "#EF4444" : "#94A3B8"}
+                    />
+                  </View>
 
-                      {dayData.isOpen ? (
-                        <View style={styles.dayScheduleInputs}>
-                          <Input
-                            containerStyle={{ flex: 1 }}
-                            label="Start"
-                            value={dayData.start}
-                            onChangeText={(v) => handleDayTimeChange(day.key, "start", v)}
-                            placeholder="09:00"
-                          />
-                          <Input
-                            containerStyle={{ flex: 1 }}
-                            label="End"
-                            value={dayData.end}
-                            onChangeText={(v) => handleDayTimeChange(day.key, "end", v)}
-                            placeholder="17:00"
-                          />
-                          <Input
-                            containerStyle={{ flex: 1 }}
-                            label="Max Tokens"
-                            value={String(dayData.maxPatients || "")}
-                            onChangeText={(v) => handleDayTimeChange(day.key, "maxPatients", v)}
-                            keyboardType="numeric"
-                            placeholder="20"
+                  {emergencyAvailable && (
+                    <Input
+                      label="Emergency Consultation Fee (₹)"
+                      placeholder="e.g. 600"
+                      value={emergencyFee}
+                      onChangeText={(val) => setEmergencyFee(val.replace(/[^0-9]/g, ""))}
+                      keyboardType="numeric"
+                      leftIcon={
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#EF4444" }}>
+                          ₹
+                        </Text>
+                      }
+                      helper="Applied when issuing emergency priority tokens."
+                    />
+                  )}
+
+                  <Input
+                    label="Daily Token Booking Start Time"
+                    placeholder="08:00"
+                    value={bookingStartTime}
+                    onChangeText={setBookingStartTime}
+                    helper="When online token booking opens for patients each morning."
+                  />
+                </Card>
+
+                {/* Weekly Schedule Editor */}
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardHeadingTitle}>Weekly OPD Shift Schedule</Text>
+
+                  {DAYS_OF_WEEK.map((day) => {
+                    const dayData = weeklySchedule[day.key] || {
+                      isOpen: false,
+                      start: "09:00",
+                      end: "17:00",
+                      maxPatients: 20,
+                    };
+
+                    return (
+                      <View key={day.key} style={styles.dayScheduleBox}>
+                        <View style={styles.dayScheduleHeader}>
+                          <Text style={styles.dayScheduleLabel}>{day.label}</Text>
+                          <Switch
+                            value={dayData.isOpen}
+                            onValueChange={() => handleDayToggle(day.key)}
+                            trackColor={{ false: "#E2E8F0", true: "#A7F3D0" }}
+                            thumbColor={dayData.isOpen ? colors.secondary : "#94A3B8"}
                           />
                         </View>
-                      ) : (
-                        <Text style={styles.dayClosedText}>Clinic Closed</Text>
-                      )}
-                    </View>
-                  );
-                })}
-              </Card>
 
-              {/* Terms & Agreement Card */}
-              <Card style={styles.formCard}>
-                <TouchableOpacity
-                  style={styles.termsCheckboxRow}
-                  onPress={() => setAcceptedTerms(!acceptedTerms)}
-                  activeOpacity={0.8}
-                >
-                  <View
-                    style={[
-                      styles.checkboxBox,
-                      acceptedTerms && styles.checkboxBoxActive,
-                    ]}
+                        {dayData.isOpen ? (
+                          <View style={styles.dayScheduleInputs}>
+                            <Input
+                              containerStyle={{ flex: 1 }}
+                              label="Start"
+                              value={dayData.start}
+                              onChangeText={(v) => handleDayTimeChange(day.key, "start", v)}
+                              placeholder="09:00"
+                            />
+                            <Input
+                              containerStyle={{ flex: 1 }}
+                              label="End"
+                              value={dayData.end}
+                              onChangeText={(v) => handleDayTimeChange(day.key, "end", v)}
+                              placeholder="17:00"
+                            />
+                            <Input
+                              containerStyle={{ flex: 1 }}
+                              label="Max Tokens"
+                              value={String(dayData.maxPatients || "")}
+                              onChangeText={(v) => handleDayTimeChange(day.key, "maxPatients", v)}
+                              keyboardType="numeric"
+                              placeholder="20"
+                            />
+                          </View>
+                        ) : (
+                          <Text style={styles.dayClosedText}>Clinic Closed</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </Card>
+
+                {/* Terms & Agreement Card */}
+                <Card style={styles.formCard}>
+                  <TouchableOpacity
+                    style={styles.termsCheckboxRow}
+                    onPress={() => setAcceptedTerms(!acceptedTerms)}
+                    activeOpacity={0.8}
                   >
-                    {acceptedTerms && <Check size={14} color="#FFFFFF" />}
-                  </View>
-                  <Text style={styles.termsText}>
-                    I confirm that the medical credentials and clinic details provided are authentic and compliant with National Medical Commission (NMC) regulations.
-                  </Text>
-                </TouchableOpacity>
-              </Card>
+                    <View
+                      style={[
+                        styles.checkboxBox,
+                        acceptedTerms && styles.checkboxBoxActive,
+                      ]}
+                    >
+                      {acceptedTerms && <Check size={14} color="#FFFFFF" />}
+                    </View>
+                    <Text style={styles.termsText}>
+                      I confirm that the medical credentials and clinic details provided are authentic and compliant with National Medical Commission (NMC) regulations.
+                    </Text>
+                  </TouchableOpacity>
+                </Card>
+              </View>
 
               <View style={styles.buttonRow}>
                 <Button
@@ -1557,7 +1626,16 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 24,
+    flexGrow: 1,
+  },
+  stepInnerWrapper: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  stepActionBtn: {
+    marginTop: 18,
+    marginBottom: 4,
   },
   errorBox: {
     flexDirection: "row",
@@ -1683,6 +1761,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: colors.primary,
+  },
+  gpsSuccessBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: radius.md,
+    padding: 8,
+    marginBottom: 12,
+  },
+  gpsSuccessText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.secondary,
+    flex: 1,
+  },
+  gpsErrorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: radius.md,
+    padding: 8,
+    marginBottom: 12,
   },
   gpsErrorBanner: {
     flexDirection: "row",
@@ -1871,6 +1978,44 @@ const styles = StyleSheet.create({
   genderPillTextActive: {
     color: colors.primary,
     fontWeight: "800",
+  },
+  uploadRowBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  uploadRowTitle: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.navy,
+  },
+  uploadRowSub: {
+    ...typography.caption,
+    fontSize: 10.5,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  uploadSuccessBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+  },
+  uploadSuccessText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.secondary,
   },
   uploadRow: {
     flexDirection: "row",

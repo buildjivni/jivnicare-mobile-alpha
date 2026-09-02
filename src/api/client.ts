@@ -16,13 +16,14 @@ export class ApiError extends Error {
 
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
+  skipAuthClear?: boolean;
 }
 
 export async function apiClient<T = any>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeoutMs = 15000, headers = {}, ...rest } = options;
+  const { timeoutMs = 15000, headers = {}, skipAuthClear = false, ...rest } = options;
   const token = useAuthStore.getState().token;
 
   const url = endpoint.startsWith("http")
@@ -57,7 +58,7 @@ export async function apiClient<T = any>(
     console.log(`[API Response] ${response.status} ${url}`);
 
     if (response.status === 401) {
-      if (!endpoint.includes("/onboard") && !endpoint.includes("/public")) {
+      if (!skipAuthClear && !endpoint.includes("/onboard") && !endpoint.includes("/public")) {
         useAuthStore.getState().clearAuth();
       }
       throw new ApiError("Session expired or authentication required. Please sign in with Google.", 401);

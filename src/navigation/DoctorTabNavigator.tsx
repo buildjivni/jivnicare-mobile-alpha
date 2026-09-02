@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { colors, typography, radius, shadows } from "../theme";
 import { useAuthStore } from "../store/useAuthStore";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { LiveQueueScreen } from "../screens/queue/LiveQueueScreen";
 import { OverviewDashboardScreen } from "../screens/overview/OverviewDashboardScreen";
 import { PatientRecordsScreen } from "../screens/patients/PatientRecordsScreen";
@@ -35,17 +36,25 @@ export type DoctorTab =
   | "BILLING"
   | "PERFORMANCE";
 
-export const DoctorTabNavigator: React.FC = () => {
+export interface DoctorTabNavigatorProps {
+  onReopenOnboarding?: () => void;
+}
+
+export const DoctorTabNavigator: React.FC<DoctorTabNavigatorProps> = ({
+  onReopenOnboarding,
+}) => {
   const user = useAuthStore((state) => state.user);
+  const { profile } = useWorkspaceStore();
   const isOperator = Boolean(user?.isOperator || user?.role === "OPERATOR");
+  const isVerified = isOperator || profile?.verificationStatus === "VERIFIED";
 
   // Operators default to QUEUE; Doctors default to OVERVIEW
-  const [activeTab, setActiveTab] = useState<DoctorTab>(isOperator ? "QUEUE" : "QUEUE");
+  const [activeTab, setActiveTab] = useState<DoctorTab>(isOperator ? "QUEUE" : "OVERVIEW");
 
   // Role-gated tabs
   const doctorTabs = [
-    { key: "QUEUE", label: "Live Queue", icon: Users },
     { key: "OVERVIEW", label: "Overview", icon: LayoutDashboard },
+    { key: "QUEUE", label: "Live Queue", icon: Users },
     { key: "PATIENTS", label: "Records", icon: History },
     { key: "SETTINGS", label: "Settings", icon: Settings },
     { key: "PROFILE", label: "Profile", icon: UserCircle },
@@ -58,6 +67,14 @@ export const DoctorTabNavigator: React.FC = () => {
 
   const currentTabs = isOperator ? operatorTabs : doctorTabs;
 
+  const handleTabPress = (tabKey: DoctorTab) => {
+    if (!isVerified && (tabKey === "QUEUE" || tabKey === "PATIENTS" || tabKey === "SETTINGS")) {
+      setActiveTab("OVERVIEW");
+      return;
+    }
+    setActiveTab(tabKey);
+  };
+
   return (
     <View style={styles.container}>
       {/* Screen Views */}
@@ -65,15 +82,17 @@ export const DoctorTabNavigator: React.FC = () => {
         {activeTab === "QUEUE" && <LiveQueueScreen />}
         {activeTab === "OVERVIEW" && (
           <OverviewDashboardScreen
-            onNavigateToQueue={() => setActiveTab("QUEUE")}
-            onNavigateToRecords={() => setActiveTab("PATIENTS")}
-            onNavigateToSettings={() => setActiveTab("SETTINGS")}
+            onNavigateToQueue={() => handleTabPress("QUEUE")}
+            onNavigateToRecords={() => handleTabPress("PATIENTS")}
+            onNavigateToSettings={() => handleTabPress("SETTINGS")}
             onNavigateToBilling={() => setActiveTab("BILLING")}
             onNavigateToPerformance={() => setActiveTab("PERFORMANCE")}
+            onEditProfileAndReapply={onReopenOnboarding}
           />
         )}
         {activeTab === "PATIENTS" && <PatientRecordsScreen />}
         {activeTab === "SETTINGS" && <SettingsScreen />}
+        {activeTab === "BILLING" && <BillingScreen />}
         {activeTab === "PROFILE" && (
           <DoctorProfileScreen onLogout={() => useAuthStore.getState().clearAuth()} />
         )}
@@ -82,44 +101,49 @@ export const DoctorTabNavigator: React.FC = () => {
         )}
       </View>
 
-      {/* Floating Bottom Tab Bar */}
-      <View style={styles.tabBarWrapper}>
-        <View style={styles.tabBar}>
-          {currentTabs.map((t) => {
-            const isActive = activeTab === t.key;
-            const Icon = t.icon;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                style={styles.tabItem}
-                onPress={() => setActiveTab(t.key as DoctorTab)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.iconCircle,
-                    isActive && styles.iconCircleActive,
-                  ]}
+      {/* Floating Bottom Tab Bar - Only for verified doctors */}
+      {isVerified && (
+        <SafeAreaView style={styles.tabBarWrapper}>
+          <View style={styles.tabBar}>
+            {currentTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              const isLocked = !isVerified && (tab.key === "QUEUE" || tab.key === "PATIENTS" || tab.key === "SETTINGS");
+
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.tabItem]}
+                  onPress={() => handleTabPress(tab.key as DoctorTab)}
+                  activeOpacity={0.7}
                 >
-                  <Icon
-                    size={20}
-                    color={isActive ? colors.primary : colors.textMuted}
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    isActive && styles.tabLabelActive,
-                  ]}
-                >
-                  {t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+                  <View
+                    style={[
+                      styles.iconCircle,
+                      isActive && styles.iconCircleActive,
+                    ]}
+                  >
+                    <Icon
+                      size={20}
+                      color={isActive ? colors.primary : isLocked ? "#CBD5E1" : colors.textMuted}
+                      strokeWidth={isActive ? 2.5 : 2}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      isActive && styles.tabLabelActive,
+                      isLocked && { color: "#CBD5E1" },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </SafeAreaView>
+      )}
     </View>
   );
 };

@@ -4,8 +4,10 @@ import { QueueResponse } from "../types/queue";
 
 export const doctorApi = {
   // ── Profile & Workspace ──────────────────────────────────────────
-  getProfile: async (): Promise<{ doctor: any }> => {
-    return apiClient("/api/doctor/profile");
+  getProfile: async (options?: { skipAuthClear?: boolean }): Promise<{ doctor: any }> => {
+    return apiClient("/api/doctor/profile", {
+      skipAuthClear: options?.skipAuthClear,
+    });
   },
 
   updateProfile: async (updates: Record<string, any>): Promise<{ success: boolean; doctor?: any }> => {
@@ -24,7 +26,7 @@ export const doctorApi = {
     fullName: string;
     contactNumber: string;
     speciality: string;
-  }) => {
+  }): Promise<{ success: boolean; message?: string; token?: string; user?: any }> => {
     return apiClient("/api/doctor/onboard/step1", {
       method: "POST",
       body: JSON.stringify(data),

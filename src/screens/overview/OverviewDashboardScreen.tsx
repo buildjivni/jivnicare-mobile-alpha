@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Linking,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { ScreenContainer } from "../../components/layout/ScreenContainer";
 import { colors, typography, radius, shadows } from "../../theme";
@@ -38,12 +39,15 @@ import {
   QrCode,
 } from "lucide-react-native";
 
+import { DoctorAccountStatusView } from "./DoctorAccountStatusView";
+
 export interface OverviewDashboardScreenProps {
   onNavigateToQueue: () => void;
   onNavigateToRecords: () => void;
   onNavigateToSettings: () => void;
   onNavigateToBilling?: () => void;
   onNavigateToPerformance?: () => void;
+  onEditProfileAndReapply?: () => void;
 }
 
 export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = ({
@@ -52,6 +56,7 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   onNavigateToSettings,
   onNavigateToBilling,
   onNavigateToPerformance,
+  onEditProfileAndReapply,
 }) => {
   const { profile, fetchWorkspace } = useWorkspaceStore();
   const [overviewData, setOverviewData] = useState<any>(null);
@@ -67,24 +72,31 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   const [isClosingHoliday, setIsClosingHoliday] = useState(false);
 
   const loadData = useCallback(async () => {
+    if (!profile || profile.verificationStatus !== "VERIFIED") {
+      setIsLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
     try {
       const [ovRes, wlRes] = await Promise.all([
-        doctorApi.getOverview(),
+        doctorApi.getOverview().catch(() => null),
         doctorApi.getWaitlist().catch(() => ({ waitlist: [] })),
-        fetchWorkspace(),
+        fetchWorkspace().catch(() => null),
       ]);
       const data = ovRes?.data || ovRes;
-      setOverviewData(data);
-      setWaitlist(wlRes?.waitlist || wlRes?.data?.waitlist || []);
-      if (data?.clinicStatus?.isOnline !== undefined) {
-        setIsOnline(Boolean(data.clinicStatus.isOnline));
+      if (data) {
+        setOverviewData(data);
+        if (data?.clinicStatus?.isOnline !== undefined) {
+          setIsOnline(Boolean(data.clinicStatus.isOnline));
+        }
       }
+      setWaitlist(wlRes?.waitlist || wlRes?.data?.waitlist || []);
     } catch (e) {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [fetchWorkspace]);
+  }, [profile, fetchWorkspace]);
 
   useEffect(() => {
     loadData();
@@ -99,9 +111,8 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
         reason: nextState ? "" : "Paused from mobile app",
       });
       setIsOnline(nextState);
-      await loadData();
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to update clinic status");
+    } catch (err: any) {
+      Alert.alert("Status Update Failed", err.message || "Could not update clinic status.");
     } finally {
       setIsTogglingStatus(false);
     }
@@ -110,23 +121,23 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   const handleCloseForToday = async () => {
     setIsClosingHoliday(true);
     try {
-      await doctorApi.toggleHoliday({
-        active: true,
-        reason: holidayReason.trim() || undefined,
-        mode: "soft",
+      await doctorApi.updateClinicStatus({
+        status: "CLINIC_CLOSED",
+        reason: holidayReason.trim() || "Closed for today",
       });
+      setIsOnline(false);
       setHolidayReason("");
-      Alert.alert("Clinic Status", "Clinic marked closed for new bookings today.");
-      await loadData();
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to close clinic for today");
+      Alert.alert("Clinic Closed", "Your clinic has been marked closed for today. Patients have been notified.");
+    } catch (err: any) {
+      Alert.alert("Failed", err.message || "Could not update holiday status.");
     } finally {
       setIsClosingHoliday(false);
     }
   };
 
   const handleDownloadQrSticker = () => {
-    const url = `${DEFAULT_API_BASE_URL}/api/doctor/qr-sticker`;
+    if (!profile?.slug && !profile?.id) return;
+    const url = `${DEFAULT_API_BASE_URL}/api/doctor/qr-pdf?doctorId=${profile.id}`;
     Linking.openURL(url).catch(() => {
       Alert.alert("Download Error", "Could not open download link.");
     });
@@ -159,6 +170,34 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   };
 
   const dayStatusConfig = getDayStatusLabel(overviewData?.dayStatus);
+
+  // ═════════════════════════════════════════════════════════
+  // NON-VERIFIED DOCTOR STATUS GATE (Under Review, Rejected, Suspended)
+  // ═════════════════════════════════════════════════════════
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (profile.verificationStatus !== "VERIFIED") {
+    return (
+      <ScreenContainer style={styles.safeArea}>
+        <DoctorAccountStatusView
+          status={profile.verificationStatus}
+          profile={profile}
+          onRefreshStatus={async () => {
+            setIsRefreshing(true);
+            await fetchWorkspace().catch(() => {});
+            setIsRefreshing(false);
+          }}
+          onEditProfileAndReapply={onEditProfileAndReapply}
+        />
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer style={styles.safeArea}>

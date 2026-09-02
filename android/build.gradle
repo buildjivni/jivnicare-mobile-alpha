@@ -15,23 +15,54 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath('com.android.tools.build:gradle')
+        classpath('com.android.tools.build:gradle:8.6.0')
         classpath('com.facebook.react:react-native-gradle-plugin')
-        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25')
+    }
+    configurations.all {
+        resolutionStrategy {
+            force 'com.android.tools.build:gradle:8.6.0'
+            force 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
+        }
     }
 }
 
 apply plugin: "com.facebook.react.rootproject"
 
+rootProject.ext {
+    buildToolsVersion = findProperty('android.buildToolsVersion') ?: '35.0.0'
+    minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
+    compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
+    targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
+    kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
+    ndkVersion = "26.1.10909125"
+}
+
 allprojects {
+    buildscript {
+        configurations.all {
+            resolutionStrategy {
+                force 'com.android.tools.build:gradle:8.6.0'
+                force 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
+            }
+        }
+    }
     repositories {
+        def isWin = System.getProperty("os.name").toLowerCase().contains("windows")
+        def nodeCmd = isWin ? ["cmd.exe", "/c", "node"] : ["node"]
+        def resolveMavenNode = { String expr ->
+            def cmd = []
+            cmd.addAll(nodeCmd)
+            cmd.addAll(["--print", expr])
+            return cmd.execute(null, rootDir).text.trim()
+        }
         maven {
             // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-            url(new File(['node', '--print', "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), '../android'))
+            url(new File(resolveMavenNode("require.resolve('react-native/package.json')"), '../android'))
         }
         maven {
             // Android JSC is installed from npm
-            url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
+            url(new File(resolveMavenNode("require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"), '../dist'))
         }
 
         google()
