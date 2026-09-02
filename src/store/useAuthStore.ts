@@ -10,7 +10,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
   isAuthenticated: false,
-  isLoading: false, // Default to false for instant 0ms mount of Partner Intro
+  isLoading: false,
+  isInitialized: false,
 
   setAuth: (user: AuthUser, token: string) => {
     try {
@@ -19,7 +20,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (e) {
       // Secure store fallback
     }
-    set({ user, token, isAuthenticated: true, isLoading: false });
+    set({ user, token, isAuthenticated: true, isLoading: false, isInitialized: true });
   },
 
   clearAuth: () => {
@@ -30,7 +31,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Secure store fallback
     }
     useWorkspaceStore.getState().clearWorkspace();
-    set({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    set({ user: null, token: null, isAuthenticated: false, isLoading: false, isInitialized: true });
   },
 
   updateUser: (partial: Partial<AuthUser>) => {
@@ -43,6 +44,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       return { user: updated };
     });
   },
+
+  setInitialized: (initialized: boolean) => {
+    set({ isInitialized: initialized });
+  },
 }));
 
 // Hydrate stored session on startup
@@ -53,8 +58,10 @@ export async function initializeAuthSession() {
     if (token && userStr) {
       const user = JSON.parse(userStr);
       useAuthStore.getState().setAuth(user, token);
+    } else {
+      useAuthStore.getState().setInitialized(true);
     }
   } catch (e) {
-    // Graceful fallback to unauthenticated state
+    useAuthStore.getState().setInitialized(true);
   }
 }

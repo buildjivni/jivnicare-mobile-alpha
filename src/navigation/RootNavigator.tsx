@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, BackHandler } from "react-native";
 import { useAuthStore } from "../store/useAuthStore";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
@@ -8,8 +8,18 @@ import { DoctorOnboardWizard } from "../screens/onboard/DoctorOnboardWizard";
 import { DoctorTabNavigator } from "./DoctorTabNavigator";
 import { colors } from "../theme";
 
+export type RootNavigationState =
+  | "INITIALIZING"
+  | "UNAUTH_INTRO"
+  | "UNAUTH_LOGIN"
+  | "UNAUTH_ONBOARD"
+  | "AUTH_PROBING"
+  | "AUTH_CONNECTION_ERROR"
+  | "DRAFT_ONBOARDING"
+  | "DOCTOR_WORKSPACE";
+
 export const RootNavigator: React.FC = () => {
-  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuthStore();
+  const { isAuthenticated, isInitialized, user } = useAuthStore();
   const {
     profile,
     isLoading: isWorkspaceLoading,
@@ -18,42 +28,92 @@ export const RootNavigator: React.FC = () => {
     fetchWorkspace,
   } = useWorkspaceStore();
 
-  // Navigation flow state when unauthenticated
-  const [unauthScreen, setUnauthScreen] = useState<"INTRO" | "LOGIN" | "ONBOARD">("INTRO");
-  const [reopenOnboarding, setReopenOnboarding] = useState(false);
+  // Guest flow route (only active when unauthenticated)
+  const [guestRoute, setGuestRoute] = useState<"INTRO" | "LOGIN" | "ONBOARD">("INTRO");
+  // Explicit edit mode when verified/review doctor wants to modify submitted details
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+
+  // Trigger workspace fetch when authenticated user has no cached profile or draft status
+  useEffect(() => {
+    if (isAuthenticated && user && !profile && !isDraftDoctor && !workspaceError && !isWorkspaceLoading) {
+      console.log("[RootNavigator] Authenticated session detected without profile -> probing workspace...");
+      fetchWorkspace();
+    }
+  }, [isAuthenticated, user, profile, isDraftDoctor, workspaceError, isWorkspaceLoading, fetchWorkspace]);
 
   // Hardware Back-Button Handling for Android
   useEffect(() => {
     const onBackPress = () => {
       if (!isAuthenticated) {
-        if (unauthScreen === "LOGIN" || unauthScreen === "ONBOARD") {
-          setUnauthScreen("INTRO");
+        if (guestRoute === "LOGIN" || guestRoute === "ONBOARD") {
+          setGuestRoute("INTRO");
           return true;
         }
         return false;
+      }
+      if (isEditingDraft) {
+        setIsEditingDraft(false);
+        return true;
       }
       return false;
     };
 
     const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
     return () => subscription.remove();
-  }, [unauthScreen, isAuthenticated]);
+  }, [guestRoute, isAuthenticated, isEditingDraft]);
 
   // ══════════════════════════════════════════════════════════
-  // 0. AUTHENTICATED USER FLOW (Takes priority whenever user is logged in)
+  // DETERMINISTIC ROOT STATE MACHINE CALCULATION
   // ══════════════════════════════════════════════════════════
-  if (isAuthenticated && user) {
-    // 0A. Initial loading state while probing backend profile
-    if (isWorkspaceLoading && !profile && !workspaceError && !isDraftDoctor) {
+  let navState: RootNavigationState = "INITIALIZING";
+
+  if (!isInitialized) {
+    navState = "INITIALIZING";
+  } else if (!isAuthenticated || !user) {
+    if (guestRoute === "ONBOARD") {
+      navState = "UNAUTH_ONBOARD";
+    } else if (guestRoute === "LOGIN") {
+      navState = "UNAUTH_LOGIN";
+    } else {
+      navState = "UNAUTH_INTRO";
+    }
+  } else {
+    // Authenticated flow
+    if (isEditingDraft) {
+      navState = "DRAFT_ONBOARDING";
+    } else if (isWorkspaceLoading && !profile && !workspaceError && !isDraftDoctor) {
+      navState = "AUTH_PROBING";
+    } else if (workspaceError && !profile && !isDraftDoctor) {
+      navState = "AUTH_CONNECTION_ERROR";
+    } else if (isDraftDoctor) {
+      navState = "DRAFT_ONBOARDING";
+    } else if (profile || user.isOperator || user.role === "OPERATOR") {
+      navState = "DOCTOR_WORKSPACE";
+    } else {
+      navState = "AUTH_PROBING";
+    }
+  }
+
+  // Log every state transition for live diagnostic telemetry
+  const lastLoggedState = useRef<string | null>(null);
+  if (lastLoggedState.current !== navState) {
+    console.log(`[RootNavigator State Transition] -> ${navState}`);
+    lastLoggedState.current = navState;
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // RENDER CORRESPONDING VIEW ACCORDING TO STATE ENUM
+  // ══════════════════════════════════════════════════════════
+  switch (navState) {
+    case "INITIALIZING":
+    case "AUTH_PROBING":
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       );
-    }
 
-    // 0B. Network or server error for existing doctor (prevent routing verified doctors into onboarding)
-    if (workspaceError && !profile && !isDraftDoctor) {
+    case "AUTH_CONNECTION_ERROR":
       return (
         <View style={styles.errorContainer}>
           <View style={styles.errorCard}>
@@ -75,7 +135,10 @@ export const RootNavigator: React.FC = () => {
 
             <TouchableOpacity
               style={styles.signOutButton}
-              onPress={() => useAuthStore.getState().clearAuth()}
+              onPress={() => {
+                setGuestRoute("INTRO");
+                useAuthStore.getState().clearAuth();
+              }}
               activeOpacity={0.7}
             >
               <Text style={styles.signOutButtonText}>Sign In with Different Account</Text>
@@ -83,82 +146,65 @@ export const RootNavigator: React.FC = () => {
           </View>
         </View>
       );
-    }
 
-    // 0C. Unregistered / Incomplete Draft Doctor (Confirmed 401/404 or explicit DRAFT status)
-    if (isDraftDoctor || reopenOnboarding || unauthScreen === "ONBOARD") {
+    case "DRAFT_ONBOARDING":
       return (
         <DoctorOnboardWizard
           initialStep={profile?.registrationStep || 1}
           onComplete={async () => {
-            setReopenOnboarding(false);
-            setUnauthScreen("INTRO");
+            setIsEditingDraft(false);
+            setGuestRoute("INTRO");
             await fetchWorkspace();
           }}
           onExit={() => {
-            setReopenOnboarding(false);
-            setUnauthScreen("INTRO");
+            setIsEditingDraft(false);
+            setGuestRoute("INTRO");
             useAuthStore.getState().clearAuth();
           }}
         />
       );
-    }
 
-    // 0D. All registered doctors (PENDING_REVIEW, REJECTED, SUSPENDED, VERIFIED, or OPERATOR)
-    return (
-      <DoctorTabNavigator
-        onReopenOnboarding={() => setReopenOnboarding(true)}
-      />
-    );
+    case "DOCTOR_WORKSPACE":
+      return (
+        <DoctorTabNavigator
+          onReopenOnboarding={() => setIsEditingDraft(true)}
+        />
+      );
+
+    case "UNAUTH_ONBOARD":
+      return (
+        <DoctorOnboardWizard
+          initialStep={1}
+          onComplete={async () => {
+            setGuestRoute("INTRO");
+            await fetchWorkspace();
+          }}
+          onExit={() => {
+            setGuestRoute("INTRO");
+          }}
+        />
+      );
+
+    case "UNAUTH_LOGIN":
+      return (
+        <DoctorSignInScreen
+          onBackToIntro={() => setGuestRoute("INTRO")}
+          onLoginSuccess={async () => {
+            setGuestRoute("INTRO");
+            await fetchWorkspace();
+          }}
+        />
+      );
+
+    case "UNAUTH_INTRO":
+    default:
+      return (
+        <PartnerIntroScreen
+          onJoinNetwork={() => setGuestRoute("ONBOARD")}
+          onSignIn={() => setGuestRoute("LOGIN")}
+        />
+      );
   }
-
-  // ══════════════════════════════════════════════════════════
-  // 1. ROOT LOADING GATE FOR COLD LAUNCH (UNAUTHENTICATED)
-  // ══════════════════════════════════════════════════════════
-  if (isAuthLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // 2. UNAUTHENTICATED GUEST FLOW
-  // ══════════════════════════════════════════════════════════
-  if (unauthScreen === "ONBOARD") {
-    return (
-      <DoctorOnboardWizard
-        initialStep={1}
-        onComplete={async () => {
-          setUnauthScreen("INTRO");
-          await fetchWorkspace();
-        }}
-        onExit={() => {
-          setUnauthScreen("INTRO");
-        }}
-      />
-    );
-  }
-
-  if (unauthScreen === "LOGIN") {
-    return (
-      <DoctorSignInScreen
-        onBackToIntro={() => setUnauthScreen("INTRO")}
-        onLoginSuccess={async (isComplete) => {
-          setUnauthScreen("INTRO");
-          await fetchWorkspace();
-        }}
-      />
-    );
-  }
-
-  return (
-    <PartnerIntroScreen
-      onJoinNetwork={() => setUnauthScreen("ONBOARD")}
-      onSignIn={() => setUnauthScreen("LOGIN")}
-    />
-  );
 };
 
 const styles = StyleSheet.create({

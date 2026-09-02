@@ -4,9 +4,10 @@ import { QueueResponse } from "../types/queue";
 
 export const doctorApi = {
   // ── Profile & Workspace ──────────────────────────────────────────
-  getProfile: async (options?: { skipAuthClear?: boolean }): Promise<{ doctor: any }> => {
+  getProfile: async (options?: { skipAuthClear?: boolean; timeoutMs?: number }): Promise<{ doctor: any }> => {
     return apiClient("/api/doctor/profile", {
       skipAuthClear: options?.skipAuthClear,
+      timeoutMs: options?.timeoutMs,
     });
   },
 

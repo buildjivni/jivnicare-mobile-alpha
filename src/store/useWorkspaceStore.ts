@@ -19,14 +19,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   profile: null,
   settings: null,
   weeklySchedule: null,
-  isLoading: true,
+  isLoading: false,
   error: null,
   isDraftDoctor: false,
 
   fetchWorkspace: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await doctorApi.getProfile({ skipAuthClear: true });
+      const response = await doctorApi.getProfile({ skipAuthClear: true, timeoutMs: 12000 });
       const doc = response.doctor;
       if (!doc) {
         throw new Error("No doctor profile returned");

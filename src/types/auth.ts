@@ -17,7 +17,9 @@ export interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   setAuth: (user: AuthUser, token: string) => void;
   clearAuth: () => void;
   updateUser: (partial: Partial<AuthUser>) => void;
+  setInitialized: (initialized: boolean) => void;
 }

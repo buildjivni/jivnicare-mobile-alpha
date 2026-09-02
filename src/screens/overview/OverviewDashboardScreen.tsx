@@ -176,9 +176,11 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   // ═════════════════════════════════════════════════════════
   if (!profile) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <ScreenContainer style={styles.safeArea}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </ScreenContainer>
     );
   }
 

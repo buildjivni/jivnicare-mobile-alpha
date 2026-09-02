@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RootNavigator } from "./src/navigation/RootNavigator";
-import { initializeAuthSession } from "./src/store/useAuthStore";
+import { initializeAuthSession, useAuthStore } from "./src/store/useAuthStore";
 import { useWorkspaceStore } from "./src/store/useWorkspaceStore";
 
 // Optimized TanStack Query Client for Ultra-Fast Mobile Caching
@@ -22,7 +22,9 @@ export default function App() {
   useEffect(() => {
     // Hydrate auth session & workspace on startup
     initializeAuthSession().then(() => {
-      useWorkspaceStore.getState().fetchWorkspace();
+      if (useAuthStore.getState().isAuthenticated) {
+        useWorkspaceStore.getState().fetchWorkspace();
+      }
     });
   }, []);
 
