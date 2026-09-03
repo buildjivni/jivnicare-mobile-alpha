@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -30,11 +30,16 @@ import {
   TrendingUp,
   MapPin,
   ChevronDown,
+  ArrowLeft,
 } from "lucide-react-native";
 
 type DatePreset = "today" | "week" | "month" | "custom";
 
-export const PatientRecordsScreen: React.FC = () => {
+export interface PatientRecordsScreenProps {
+  onBack?: () => void;
+}
+
+export const PatientRecordsScreen: React.FC<PatientRecordsScreenProps> = ({ onBack }) => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [preset, setPreset] = useState<DatePreset>("month");
@@ -184,9 +189,16 @@ export const PatientRecordsScreen: React.FC = () => {
     <ScreenContainer style={styles.safeArea}>
       {/* Top Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Patient Records</Text>
-          <Text style={styles.subtitle}>Directory of past consultations and visit history</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+              <ArrowLeft size={20} color={colors.navy} />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Patient Records</Text>
+            <Text style={styles.subtitle}>Directory of past consultations and visit history</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.exportBtn} onPress={handleExport} activeOpacity={0.8}>
           <FileDown size={15} color={colors.primary} />
@@ -469,6 +481,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     textTransform: "none",
+  },
+  backButton: {
+    padding: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   exportBtn: {
     flexDirection: "row",

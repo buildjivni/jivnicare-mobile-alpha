@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Platform,
+  BackHandler,
 } from "react-native";
 import { colors, typography, radius, shadows } from "../theme";
 import { useAuthStore } from "../store/useAuthStore";
@@ -49,7 +50,9 @@ export const DoctorTabNavigator: React.FC<DoctorTabNavigatorProps> = ({
   const isVerified = isOperator || profile?.verificationStatus === "VERIFIED";
 
   // Operators default to QUEUE; Doctors default to OVERVIEW
-  const [activeTab, setActiveTab] = useState<DoctorTab>(isOperator ? "QUEUE" : "OVERVIEW");
+  const defaultTab: DoctorTab = isOperator ? "QUEUE" : "OVERVIEW";
+  const [activeTab, setActiveTab] = useState<DoctorTab>(defaultTab);
+  const [tabHistory, setTabHistory] = useState<DoctorTab[]>([defaultTab]);
 
   // Role-gated tabs
   const doctorTabs = [
@@ -67,37 +70,80 @@ export const DoctorTabNavigator: React.FC<DoctorTabNavigatorProps> = ({
 
   const currentTabs = isOperator ? operatorTabs : doctorTabs;
 
-  const handleTabPress = (tabKey: DoctorTab) => {
+  const navigateTab = useCallback((tabKey: DoctorTab) => {
     if (!isVerified && (tabKey === "QUEUE" || tabKey === "PATIENTS" || tabKey === "SETTINGS")) {
       setActiveTab("OVERVIEW");
       return;
     }
     setActiveTab(tabKey);
-  };
+    setTabHistory((prev) => {
+      if (prev[prev.length - 1] === tabKey) return prev;
+      return [...prev, tabKey];
+    });
+  }, [isVerified]);
+
+  const handleGoBack = useCallback(() => {
+    if (tabHistory.length > 1) {
+      const nextHistory = [...tabHistory];
+      nextHistory.pop(); // Remove current tab
+      const previousTab = nextHistory[nextHistory.length - 1];
+      setTabHistory(nextHistory);
+      setActiveTab(previousTab);
+      return true;
+    }
+    if (activeTab !== defaultTab) {
+      setActiveTab(defaultTab);
+      setTabHistory([defaultTab]);
+      return true;
+    }
+    // At root screen (OVERVIEW for doctor, QUEUE for operator) -> allow Android exit
+    return false;
+  }, [tabHistory, activeTab, defaultTab]);
+
+  // Handle hardware & gesture back button on Android
+  useEffect(() => {
+    const onHardwareBack = () => {
+      return handleGoBack();
+    };
+
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
+    return () => backHandler.remove();
+  }, [handleGoBack]);
 
   return (
     <View style={styles.container}>
       {/* Screen Views */}
       <View style={styles.screenContainer}>
-        {activeTab === "QUEUE" && <LiveQueueScreen />}
+        {activeTab === "QUEUE" && (
+          <LiveQueueScreen onBack={activeTab !== defaultTab ? handleGoBack : undefined} />
+        )}
         {activeTab === "OVERVIEW" && (
           <OverviewDashboardScreen
-            onNavigateToQueue={() => handleTabPress("QUEUE")}
-            onNavigateToRecords={() => handleTabPress("PATIENTS")}
-            onNavigateToSettings={() => handleTabPress("SETTINGS")}
-            onNavigateToBilling={() => setActiveTab("BILLING")}
-            onNavigateToPerformance={() => setActiveTab("PERFORMANCE")}
+            onNavigateToQueue={() => navigateTab("QUEUE")}
+            onNavigateToRecords={() => navigateTab("PATIENTS")}
+            onNavigateToSettings={() => navigateTab("SETTINGS")}
+            onNavigateToBilling={() => navigateTab("BILLING")}
+            onNavigateToPerformance={() => navigateTab("PERFORMANCE")}
             onEditProfileAndReapply={onReopenOnboarding}
           />
         )}
-        {activeTab === "PATIENTS" && <PatientRecordsScreen />}
-        {activeTab === "SETTINGS" && <SettingsScreen />}
-        {activeTab === "BILLING" && <BillingScreen />}
+        {activeTab === "PATIENTS" && (
+          <PatientRecordsScreen onBack={handleGoBack} />
+        )}
+        {activeTab === "SETTINGS" && (
+          <SettingsScreen onBack={handleGoBack} />
+        )}
+        {activeTab === "BILLING" && (
+          <BillingScreen onBack={handleGoBack} />
+        )}
         {activeTab === "PROFILE" && (
-          <DoctorProfileScreen onLogout={() => useAuthStore.getState().clearAuth()} />
+          <DoctorProfileScreen
+            onBack={handleGoBack}
+            onLogout={() => useAuthStore.getState().clearAuth()}
+          />
         )}
         {activeTab === "PERFORMANCE" && (
-          <PerformanceScreen onBack={() => setActiveTab("OVERVIEW")} />
+          <PerformanceScreen onBack={handleGoBack} />
         )}
       </View>
 
@@ -114,7 +160,7 @@ export const DoctorTabNavigator: React.FC<DoctorTabNavigatorProps> = ({
                 <TouchableOpacity
                   key={tab.key}
                   style={[styles.tabItem]}
-                  onPress={() => handleTabPress(tab.key as DoctorTab)}
+                  onPress={() => navigateTab(tab.key as DoctorTab)}
                   activeOpacity={0.7}
                 >
                   <View

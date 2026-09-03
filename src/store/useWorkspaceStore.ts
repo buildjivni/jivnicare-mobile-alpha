@@ -103,24 +103,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     } catch (err: any) {
       if (err?.status === 401 || err?.status === 404) {
         // Confirmed that no profile exists on the backend yet (unregistered / draft doctor)
-        set({
-          profile: null,
-          settings: null,
-          weeklySchedule: null,
+        set((state) => ({
+          profile: state.profile ? state.profile : null,
+          settings: state.settings ? state.settings : null,
+          weeklySchedule: state.weeklySchedule ? state.weeklySchedule : null,
           isLoading: false,
           error: null,
-          isDraftDoctor: true,
-        });
+          isDraftDoctor: !state.profile,
+        }));
       } else {
         // Real fetch error (network, timeout, 500 server error)
-        set({
-          profile: null,
-          settings: null,
-          weeklySchedule: null,
+        // If a valid profile was already loaded in memory (e.g. returning from background app),
+        // NEVER wipe the profile or trap user in a full-screen connection error.
+        set((state) => ({
           isLoading: false,
-          error: err?.message || "Failed to load doctor workspace. Please check your internet connection.",
-          isDraftDoctor: false,
-        });
+          error: state.profile ? null : (err?.message || "Failed to load doctor workspace. Please check your internet connection."),
+          isDraftDoctor: state.isDraftDoctor,
+        }));
       }
     }
   },

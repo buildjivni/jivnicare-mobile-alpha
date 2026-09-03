@@ -269,6 +269,27 @@ export const doctorApi = {
     });
   },
 
+  // ── Feedback & Support ───────────────────────────────────────────
+  submitFeedback: async (data: {
+    category: string;
+    message: string;
+    rating?: number;
+    subject?: string;
+  }) => {
+    return apiClient("/api/doctor/feedback", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── Account Deletion ─────────────────────────────────────────────
+  deleteAccount: async (confirmationText: string = "DELETE") => {
+    return apiClient("/api/doctor/account", {
+      method: "POST",
+      body: JSON.stringify({ confirmationText }),
+    });
+  },
+
   // ── Public Specialties List ──────────────────────────────────────
   getSpecialties: async (): Promise<{ success: boolean; data: { name: string }[] }> => {
     return apiClient("/api/public/specialties");

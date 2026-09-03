@@ -37,15 +37,43 @@ import {
   CalendarX,
   AlertTriangle,
   ChevronRight,
+  ArrowLeft,
+  Plus,
+  Scale,
+  FileText,
+  ShieldAlert,
+  HelpCircle,
+  MessageSquare,
+  X,
+  Lock,
 } from "lucide-react-native";
+import { LegalViewerModal, LegalDocType } from "../legal/LegalViewerModal";
+import { HelpSupportModal } from "../help/HelpSupportModal";
+import { DoctorFeedbackModal } from "../feedback/DoctorFeedbackModal";
+import { AppFooterBranding } from "../../components/layout/AppFooterBranding";
+import { useAuthStore } from "../../store/useAuthStore";
+import { Modal } from "react-native";
 
-export const SettingsScreen: React.FC = () => {
+export interface SettingsScreenProps {
+  onBack?: () => void;
+}
+
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const { profile, settings, weeklySchedule, fetchWorkspace } = useWorkspaceStore();
-  const [activeSubTab, setActiveSubTab] = useState<"IDENTITY" | "OPERATIONS" | "SCHEDULE" | "HOLIDAY" | "EXPERTISE" | "STAFF">("IDENTITY");
+  const [activeSubTab, setActiveSubTab] = useState<"IDENTITY" | "OPERATIONS" | "SCHEDULE" | "HOLIDAY" | "EXPERTISE" | "STAFF" | "LEGAL">("IDENTITY");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [scrollAtEnd, setScrollAtEnd] = useState(false);
   const subTabScrollRef = useRef<ScrollView>(null);
+
+  // Legal & Support Modals
+  const [legalModalVisible, setLegalModalVisible] = useState(false);
+  const [legalDocType, setLegalDocType] = useState<LegalDocType>("TERMS");
+  const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // 1. Pending Profile Update Requests
   const [profileRequests, setProfileRequests] = useState<any[]>([]);
@@ -58,23 +86,38 @@ export const SettingsScreen: React.FC = () => {
   const isVerified = profile?.verificationStatus === "VERIFIED";
 
   // 3. Operations Form State
-  const [fee, setFee] = useState(settings?.fee || "300");
+  const [fee, setFee] = useState(settings?.fee || "500");
   const [consultTime, setConsultTime] = useState(settings?.averageConsultationTime || "15");
   const [bookingWindowStart, setBookingWindowStart] = useState(settings?.bookingWindowStart || "08:00");
   const [emergencySlots, setEmergencySlots] = useState(settings?.emergencySlots || "2");
-  const [emergencyFee, setEmergencyFee] = useState(settings?.emergencyFee || "500");
+  const [emergencyFee, setEmergencyFee] = useState(settings?.emergencyFee || "700");
   const [followUpDays, setFollowUpDays] = useState(settings?.followUpDays || "7");
+  const [opdLimit, setOpdLimit] = useState(settings?.opdPatientLimit || "30");
 
   // 4. Leave & Holiday Manager State
   const [holidayReason, setHolidayReason] = useState("");
   const [isHolidayClosed, setIsHolidayClosed] = useState(false);
 
-  // 5. Operators List State
+  // 5. Weekly Schedule
+  const [schedule, setSchedule] = useState<WeeklySchedule>(
+    (weeklySchedule as any) || {
+      monday: { active: true, slots: [{ start: "09:00", end: "13:00" }, { start: "17:00", end: "20:00" }] },
+      tuesday: { active: true, slots: [{ start: "09:00", end: "13:00" }, { start: "17:00", end: "20:00" }] },
+      wednesday: { active: true, slots: [{ start: "09:00", end: "13:00" }, { start: "17:00", end: "20:00" }] },
+      thursday: { active: true, slots: [{ start: "09:00", end: "13:00" }, { start: "17:00", end: "20:00" }] },
+      friday: { active: true, slots: [{ start: "09:00", end: "13:00" }, { start: "17:00", end: "20:00" }] },
+      saturday: { active: true, slots: [{ start: "09:00", end: "13:00" }] },
+      sunday: { active: false, slots: [] },
+    }
+  );
+
+  // 6. Staff State
   const [operators, setOperators] = useState<any[]>([]);
   const [newOpName, setNewOpName] = useState("");
   const [newOpPhone, setNewOpPhone] = useState("");
+  const [newOpRole, setNewOpRole] = useState<"Operator" | "Receptionist" | "Clinic Manager">("Operator");
 
-  // 6. Expertise Tags State
+  // 7. Tags State
   const [tags, setTags] = useState<string[]>(profile?.expertiseTags || []);
   const [newTagInput, setNewTagInput] = useState("");
 
@@ -229,14 +272,14 @@ export const SettingsScreen: React.FC = () => {
     }
     setIsSaving(true);
     try {
-      await doctorApi.addOperator({ name: newOpName, phone: newOpPhone, role: "RECEPTIONIST" });
+      await doctorApi.addOperator({ name: newOpName.trim(), phone: newOpPhone.trim(), role: newOpRole });
       setNewOpName("");
       setNewOpPhone("");
       const res = await doctorApi.getOperators();
       setOperators(res.data || res.operators || []);
-      Alert.alert("Staff Added", "Operator invited to manage your clinic queue.");
+      Alert.alert("Staff Added", `${newOpRole} invited to manage your clinic queue.`);
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Could not add operator.");
+      Alert.alert("Error", e.message || "Could not add staff member.");
     } finally {
       setIsSaving(false);
     }
@@ -247,31 +290,43 @@ export const SettingsScreen: React.FC = () => {
       await doctorApi.removeOperator(id);
       setOperators(operators.filter((op) => op.id !== id));
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Could not remove operator.");
+      Alert.alert("Error", e.message || "Could not remove staff member.");
     }
   };
 
   // Expertise Tags actions
   const handleAddTag = () => {
-    if (!newTagInput.trim() || tags.includes(newTagInput.trim())) return;
-    const updated = [...tags, newTagInput.trim()];
+    const trimmed = newTagInput.trim();
+    if (!trimmed || tags.includes(trimmed)) return;
+    const updated = [...tags, trimmed];
     setTags(updated);
     setNewTagInput("");
-    doctorApi.updateProfile({ expertiseTags: updated });
+    useWorkspaceStore.getState().updateLocalProfile({ expertiseTags: updated });
+    doctorApi.updateSettings({ expertiseTags: updated }).catch(() => {});
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
     const updated = tags.filter((t) => t !== tagToRemove);
     setTags(updated);
-    doctorApi.updateProfile({ expertiseTags: updated });
+    useWorkspaceStore.getState().updateLocalProfile({ expertiseTags: updated });
+    doctorApi.updateSettings({ expertiseTags: updated }).catch(() => {});
   };
 
   return (
     <ScreenContainer style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Practice Settings</Text>
-        <Text style={styles.subtitle}>Configure clinic identity, schedule, operations & staff</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+              <ArrowLeft size={20} color={colors.navy} />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Practice Settings</Text>
+            <Text style={styles.subtitle}>Configure clinic identity, schedule, operations & staff</Text>
+          </View>
+        </View>
       </View>
 
       {/* Sub Tabs */}
@@ -299,6 +354,7 @@ export const SettingsScreen: React.FC = () => {
             { key: "HOLIDAY", label: "Leave & Holidays" },
             { key: "EXPERTISE", label: "Expertise" },
             { key: "STAFF", label: "Staff" },
+            { key: "LEGAL", label: "Legal & Support" },
           ].map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -652,8 +708,36 @@ export const SettingsScreen: React.FC = () => {
                   onChangeText={setNewOpPhone}
                   containerStyle={{ marginBottom: 14 }}
                 />
+                <Text style={styles.inputLabel}>Staff Role</Text>
+                <View style={styles.rolePickerRow}>
+                  {[
+                    { key: "Operator", label: "Primary Operator" },
+                    { key: "Receptionist", label: "Receptionist" },
+                    { key: "Clinic Manager", label: "Clinic Manager" },
+                  ].map((r) => (
+                    <TouchableOpacity
+                      key={r.key}
+                      style={[
+                        styles.roleChip,
+                        newOpRole === r.key && styles.roleChipActive,
+                      ]}
+                      onPress={() => setNewOpRole(r.key as any)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.roleChipText,
+                          newOpRole === r.key && styles.roleChipTextActive,
+                        ]}
+                      >
+                        {r.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
                 <Button
-                  title="Send Operator Invitation"
+                  title="Send Staff Invitation"
                   size="md"
                   onPress={handleAddOperator}
                   loading={isSaving}
@@ -666,7 +750,10 @@ export const SettingsScreen: React.FC = () => {
                 operators.map((op) => (
                   <View key={op.id} style={styles.operatorRow}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.opName}>{op.name}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <Text style={styles.opName}>{op.name}</Text>
+                        <Badge variant="neutral" label={op.role || "Operator"} />
+                      </View>
                       <Text style={styles.opPhone}>+91 {op.phone}</Text>
                     </View>
                     <TouchableOpacity
@@ -683,7 +770,235 @@ export const SettingsScreen: React.FC = () => {
             </Card>
           </View>
         )}
+
+        {/* ── SUBTAB 7: LEGAL, SUPPORT & ACCOUNT COMPLIANCE ── */}
+        {activeSubTab === "LEGAL" && (
+          <View style={{ gap: 14 }}>
+            {/* Legal & Compliance Card */}
+            <Card style={styles.cardSection}>
+              <Text style={styles.sectionHeader}>Legal &amp; Regulatory Compliance</Text>
+              <Text style={styles.sectionSub}>
+                Review provider terms, data protection policies, and medical liability disclaimers.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.legalRow}
+                onPress={() => {
+                  setLegalDocType("TERMS");
+                  setLegalModalVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.legalIconBox, { backgroundColor: "#EFF6FF" }]}>
+                  <Scale size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legalRowTitle}>Terms of Service &amp; Partner Agreement</Text>
+                  <Text style={styles.legalRowSub}>Intermediary safe harbor, doctor autonomy &amp; policies</Text>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.legalRow}
+                onPress={() => {
+                  setLegalDocType("PRIVACY");
+                  setLegalModalVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.legalIconBox, { backgroundColor: "#ECFDF5" }]}>
+                  <ShieldCheck size={18} color="#059669" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legalRowTitle}>Privacy &amp; Data Handling Policy</Text>
+                  <Text style={styles.legalRowSub}>NMC credentials storage, patient token privacy &amp; retention</Text>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.legalRow}
+                onPress={() => {
+                  setLegalDocType("DISCLAIMER");
+                  setLegalModalVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.legalIconBox, { backgroundColor: "#FFF1F2" }]}>
+                  <ShieldAlert size={18} color="#E11D48" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legalRowTitle}>Medical &amp; Intermediary Disclaimer</Text>
+                  <Text style={styles.legalRowSub}>Routine OPD scope &amp; emergency care exclusions</Text>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </Card>
+
+            {/* Help & Feedback Card */}
+            <Card style={styles.cardSection}>
+              <Text style={styles.sectionHeader}>Partner Help &amp; Product Feedback</Text>
+              <Text style={styles.sectionSub}>
+                Get operational support or suggest features directly to our engineering team.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.legalRow}
+                onPress={() => setHelpModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.legalIconBox, { backgroundColor: "#F0FDF4" }]}>
+                  <HelpCircle size={18} color="#15803D" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legalRowTitle}>Help Desk &amp; FAQs</Text>
+                  <Text style={styles.legalRowSub}>WhatsApp, email &amp; token queue guides</Text>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.legalRow}
+                onPress={() => setFeedbackModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.legalIconBox, { backgroundColor: "#FAF5FF" }]}>
+                  <MessageSquare size={18} color="#9333EA" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legalRowTitle}>Send Partner Feedback / Bug Report</Text>
+                  <Text style={styles.legalRowSub}>Direct suggestion channel to product engineers</Text>
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </Card>
+
+            {/* Danger Zone: Account Deletion */}
+            <Card style={[styles.cardSection, { borderColor: "#FECDD3", backgroundColor: "#FFF8F8" }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <AlertTriangle size={18} color="#E11D48" />
+                <Text style={[styles.sectionHeader, { color: "#9F1239", marginBottom: 0 }]}>Danger Zone</Text>
+              </View>
+              <Text style={[styles.sectionSub, { color: "#9F1239" }]}>
+                Soft-delete unlists your clinic from public search, cancels pending tokens, and revokes staff access. Past completed records are preserved for 3-year statutory medical audit compliance.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.deleteAccountBtn}
+                onPress={() => {
+                  setDeleteConfirmationInput("");
+                  setDeleteModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Trash2 size={16} color="#FFFFFF" />
+                <Text style={styles.deleteAccountBtnText}>Delete Practice Account</Text>
+              </TouchableOpacity>
+            </Card>
+          </View>
+        )}
+
+        {/* Minimal App Footer Branding */}
+        <AppFooterBranding />
       </ScrollView>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalCard}>
+            <View style={styles.deleteModalHeader}>
+              <View style={styles.deleteIconCircle}>
+                <AlertTriangle size={24} color="#E11D48" />
+              </View>
+              <Text style={styles.deleteModalTitle}>Delete Practice Account?</Text>
+            </View>
+
+            <Text style={styles.deleteModalWarning}>
+              This will immediately:{"\n"}
+              • Unlist your clinic and doctor profile from public search{"\n"}
+              • Cancel all active/pending patient queue tokens{"\n"}
+              • Revoke staff and receptionist access{"\n\n"}
+              To confirm, type <Text style={{ fontWeight: "700", color: "#E11D48" }}>DELETE</Text> below:
+            </Text>
+
+            <Input
+              placeholder="Type DELETE to confirm"
+              value={deleteConfirmationInput}
+              onChangeText={(text) => setDeleteConfirmationInput(text.toUpperCase())}
+              containerStyle={{ marginVertical: 14 }}
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                size="md"
+                onPress={() => setDeleteModalVisible(false)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title={isDeletingAccount ? "Deleting..." : "Confirm Delete"}
+                variant="destructive"
+                size="md"
+                onPress={async () => {
+                  if (deleteConfirmationInput.trim() !== "DELETE") {
+                    Alert.alert("Confirmation Required", "Please type DELETE in capital letters.");
+                    return;
+                  }
+                  setIsDeletingAccount(true);
+                  try {
+                    await doctorApi.deleteAccount("DELETE");
+                    setDeleteModalVisible(false);
+                    Alert.alert(
+                      "Practice Closed",
+                      "Your clinic has been unlisted and account deactivated.",
+                      [
+                        {
+                          text: "OK",
+                          onPress: () => {
+                            useAuthStore.getState().clearAuth();
+                          },
+                        },
+                      ]
+                    );
+                  } catch (err: any) {
+                    Alert.alert("Error", err?.message || "Failed to delete account.");
+                  } finally {
+                    setIsDeletingAccount(false);
+                  }
+                }}
+                disabled={deleteConfirmationInput.trim() !== "DELETE" || isDeletingAccount}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* In-App Legal Viewer Modal */}
+      <LegalViewerModal
+        visible={legalModalVisible}
+        initialDoc={legalDocType}
+        onClose={() => setLegalModalVisible(false)}
+      />
+
+      {/* In-App Help & Support Modal */}
+      <HelpSupportModal
+        visible={helpModalVisible}
+        onClose={() => setHelpModalVisible(false)}
+      />
+
+      {/* In-App Doctor Feedback Modal */}
+      <DoctorFeedbackModal
+        visible={feedbackModalVisible}
+        onClose={() => setFeedbackModalVisible(false)}
+      />
     </ScreenContainer>
   );
 };
@@ -1051,8 +1366,138 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: "none",
   },
+  backButton: {
+    padding: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  inputLabel: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textSecondary,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  rolePickerRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 14,
+    flexWrap: "wrap",
+  },
+  roleChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+  },
+  roleChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accent,
+  },
+  roleChipText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: "600",
+    textTransform: "none",
+  },
+  roleChipTextActive: {
+    color: colors.primary,
+    fontWeight: "700",
+  },
   saveBtn: {
     marginTop: 8,
     width: "100%",
+  },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+    gap: 12,
+  },
+  legalIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  legalRowTitle: {
+    ...typography.titleSmall,
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  legalRowSub: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    textTransform: "none",
+  },
+  deleteAccountBtn: {
+    backgroundColor: "#E11D48",
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  deleteAccountBtnText: {
+    ...typography.button,
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  deleteModalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 22,
+    width: "100%",
+    maxWidth: 380,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  deleteModalHeader: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  deleteIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#FFE4E6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  deleteModalTitle: {
+    ...typography.titleMedium,
+    fontSize: 17,
+    color: "#9F1239",
+  },
+  deleteModalWarning: {
+    ...typography.bodySmall,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textSecondary,
   },
 });

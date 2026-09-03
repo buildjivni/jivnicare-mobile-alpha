@@ -34,9 +34,14 @@ import {
   PauseCircle,
   PlayCircle,
   Users,
+  ArrowLeft,
 } from "lucide-react-native";
 
-export const LiveQueueScreen: React.FC = () => {
+export interface LiveQueueScreenProps {
+  onBack?: () => void;
+}
+
+export const LiveQueueScreen: React.FC<LiveQueueScreenProps> = ({ onBack }) => {
   const [tokens, setTokens] = useState<QueueTokenItem[]>([]);
   const [stats, setStats] = useState<QueueStats>({
     total: 0,
@@ -303,6 +308,11 @@ export const LiveQueueScreen: React.FC = () => {
       {/* Top Header Bar */}
       <View style={styles.headerBar}>
         <View style={styles.headerLeft}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+              <ArrowLeft size={18} color={colors.navy} />
+            </TouchableOpacity>
+          )}
           <Text style={styles.headerTitle}>Live OPD Queue</Text>
           <StatusPill
             status={clinicStatus}
@@ -566,6 +576,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    flex: 1,
+  },
+  backButton: {
+    padding: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   headerTitle: {
     ...typography.titleMedium,

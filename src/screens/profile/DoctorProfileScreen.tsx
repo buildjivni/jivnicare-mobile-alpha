@@ -24,6 +24,9 @@ import { doctorApi } from "../../api/doctor";
 import { uploadApi } from "../../api/upload";
 import { DEFAULT_API_BASE_URL } from "../../api/client";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import * as WebBrowser from "expo-web-browser";
+import { AppFooterBranding } from "../../components/layout/AppFooterBranding";
 import {
   User,
   Building2,
@@ -42,17 +45,24 @@ import {
   Users,
   Award,
   BookOpen,
+  ArrowLeft,
+  Tag,
+  Plus,
+  Trash2,
 } from "lucide-react-native";
 
 export interface DoctorProfileScreenProps {
+  onBack?: () => void;
   onLogout: () => void;
 }
 
 export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
+  onBack,
   onLogout,
 }) => {
   const { profile, fetchWorkspace } = useWorkspaceStore();
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloadingQr, setIsDownloadingQr] = useState(false);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestedChanges, setRequestedChanges] = useState("");
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
@@ -65,6 +75,8 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
   const [qualifications, setQualifications] = useState(
     profile?.qualifications || ""
   );
+  const [tags, setTags] = useState<string[]>(profile?.expertiseTags || []);
+  const [newTagInput, setNewTagInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Pending Profile Approvals
@@ -78,6 +90,7 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
       setBio(profile.bio || "");
       setLifetimePatients(profile.lifetimePatientsDeclaration || "");
       setQualifications(profile.qualifications || "");
+      setTags(profile.expertiseTags || []);
     }
   }, [profile]);
 
@@ -126,8 +139,43 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
     });
   };
 
-  const handleDownloadQrSticker = () => {
-    Linking.openURL(`${DEFAULT_API_BASE_URL}/api/doctor/qr-sticker`);
+  const handleDownloadQrSticker = async () => {
+    if (!profile?.slug && !profile?.id) return;
+    const url = `${DEFAULT_API_BASE_URL}/api/doctor/qr-pdf?doctorId=${profile.id}`;
+    setIsDownloadingQr(true);
+    try {
+      const fileUri = `${FileSystem.documentDirectory}JivniCare_QR_Sticker_${profile.id}.pdf`;
+      const result = await FileSystem.downloadAsync(url, fileUri);
+      if (result?.status === 200) {
+        Alert.alert("QR Sticker Downloaded", "Saved directly to your device.", [
+          { text: "Preview PDF", onPress: () => WebBrowser.openBrowserAsync(url) },
+          { text: "Done", style: "cancel" },
+        ]);
+      } else {
+        await WebBrowser.openBrowserAsync(url);
+      }
+    } catch {
+      await WebBrowser.openBrowserAsync(url);
+    } finally {
+      setIsDownloadingQr(false);
+    }
+  };
+
+  const handleAddTag = () => {
+    const trimmed = newTagInput.trim();
+    if (!trimmed || tags.includes(trimmed)) return;
+    const updated = [...tags, trimmed];
+    setTags(updated);
+    setNewTagInput("");
+    useWorkspaceStore.getState().updateLocalProfile({ expertiseTags: updated });
+    doctorApi.updateSettings({ expertiseTags: updated }).catch(() => {});
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const updated = tags.filter((t) => t !== tagToRemove);
+    setTags(updated);
+    useWorkspaceStore.getState().updateLocalProfile({ expertiseTags: updated });
+    doctorApi.updateSettings({ expertiseTags: updated }).catch(() => {});
   };
 
   const handleSaveProfile = async () => {
@@ -144,16 +192,17 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
         payload.qualifications = qualifications.trim();
       }
 
-      await doctorApi.updateSettings(payload);
+      await doctorApi.updateProfile(payload);
+      await doctorApi.updateSettings({ expertiseTags: tags }).catch(() => {});
       await fetchWorkspace();
-      await loadProfileRequests();
-      Alert.alert("Success", "Doctor profile details updated successfully.");
+      Alert.alert("Saved", "Profile details updated successfully.");
     } catch (e: any) {
-      Alert.alert("Save Failed", e.message || "Could not update profile.");
+      Alert.alert("Error", e.message || "Failed to update profile.");
     } finally {
       setIsSaving(false);
     }
   };
+
 
   const handleSubmitLockedRequest = async () => {
     if (!requestedChanges.trim()) {
@@ -183,10 +232,19 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
       >
         {/* Header Title */}
         <View style={styles.screenHeader}>
-          <Text style={styles.title}>Doctor Profile</Text>
-          <Text style={styles.subtitle}>
-            Manage public bio, credentials & verified medical registration
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {onBack && (
+              <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+                <ArrowLeft size={20} color={colors.navy} />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Doctor Profile</Text>
+              <Text style={styles.subtitle}>
+                Manage public bio, credentials & verified medical registration
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* ── 1. PENDING PROFILE APPROVALS BANNER (Matching Web) ── */}
@@ -297,9 +355,11 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
             <Text style={styles.shareSub}>WhatsApp booking</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickShareCard} onPress={handleDownloadQrSticker}>
+          <TouchableOpacity style={styles.quickShareCard} onPress={handleDownloadQrSticker} disabled={isDownloadingQr}>
             <QrCode size={20} color={colors.secondary} />
-            <Text style={[styles.shareTitle, { color: colors.secondary }]}>Clinic QR</Text>
+            <Text style={[styles.shareTitle, { color: colors.secondary }]}>
+              {isDownloadingQr ? "Saving..." : "Clinic QR"}
+            </Text>
             <Text style={styles.shareSub}>Print PDF sticker</Text>
           </TouchableOpacity>
         </View>
@@ -383,6 +443,49 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
           />
         </Card>
 
+        {/* ── 2B. CLINICAL EXPERTISE & TREATMENT TAGS ── */}
+        <Card style={styles.infoSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.iconHeadingRow}>
+              <Tag size={18} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Clinical Expertise & Tags</Text>
+            </View>
+            <Badge label="Searchable" variant="neutral" size="sm" />
+          </View>
+          <Text style={styles.fieldHelperText}>
+            Add conditions, treatments, and procedures you specialize in (e.g. Diabetes, Hypertension, Fever).
+          </Text>
+
+          <View style={styles.tagInputRow}>
+            <View style={{ flex: 1 }}>
+              <Input
+                placeholder="Add specialty tag..."
+                value={newTagInput}
+                onChangeText={setNewTagInput}
+                containerStyle={{ marginBottom: 0 }}
+              />
+            </View>
+            <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag} activeOpacity={0.8}>
+              <Plus size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.tagList}>
+            {tags.length > 0 ? (
+              tags.map((t) => (
+                <View key={t} style={styles.tagBadge}>
+                  <Text style={styles.tagText}>{t}</Text>
+                  <TouchableOpacity onPress={() => handleRemoveTag(t)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.tagRemove}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noTagsText}>No clinical tags added yet. Add tags to help patients find you.</Text>
+            )}
+          </View>
+        </Card>
+
         {/* ── 3. LOCKED MEDICAL CREDENTIALS ── */}
         <Card style={styles.infoSection}>
           <View style={styles.sectionHeaderRow}>
@@ -447,6 +550,9 @@ export const DoctorProfileScreen: React.FC<DoctorProfileScreenProps> = ({
           textStyle={{ color: colors.destructive }}
           style={styles.logoutBtn}
         />
+
+        {/* Minimal App Footer Branding */}
+        <AppFooterBranding />
       </ScrollView>
 
       {/* Locked Field Request Modal */}
@@ -793,6 +899,62 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.navy,
     fontWeight: "600",
+  },
+  backButton: {
+    padding: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  tagInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  addTagBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tagList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  tagBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    gap: 6,
+  },
+  tagText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontSize: 11,
+    textTransform: "none",
+    fontWeight: "600",
+  },
+  tagRemove: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  noTagsText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    textTransform: "none",
+    marginTop: 4,
   },
   logoutBtn: {
     marginTop: 10,

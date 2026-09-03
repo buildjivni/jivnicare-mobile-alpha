@@ -41,6 +41,10 @@ import {
 
 import { DoctorAccountStatusView } from "./DoctorAccountStatusView";
 
+import * as FileSystem from "expo-file-system";
+import * as WebBrowser from "expo-web-browser";
+import { AppFooterBranding } from "../../components/layout/AppFooterBranding";
+
 export interface OverviewDashboardScreenProps {
   onNavigateToQueue: () => void;
   onNavigateToRecords: () => void;
@@ -58,15 +62,17 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
   onNavigateToPerformance,
   onEditProfileAndReapply,
 }) => {
-  const { profile, fetchWorkspace } = useWorkspaceStore();
+  const { profile, settings, fetchWorkspace } = useWorkspaceStore();
   const [overviewData, setOverviewData] = useState<any>(null);
   const [waitlist, setWaitlist] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showRevenue, setShowRevenue] = useState(false);
+  const [isDownloadingQr, setIsDownloadingQr] = useState(false);
 
-  // Operations Toggle & Holiday Form State
-  const [isOnline, setIsOnline] = useState(true);
+  // Operations Toggle & Holiday Form State - Safely initialized from workspace cache
+  const initialOnline = settings?.clinicStatus === "AVAILABLE" ? true : settings?.clinicStatus ? false : null;
+  const [isOnline, setIsOnline] = useState<boolean | null>(initialOnline);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [holidayReason, setHolidayReason] = useState("");
   const [isClosingHoliday, setIsClosingHoliday] = useState(false);
@@ -88,6 +94,8 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
         setOverviewData(data);
         if (data?.clinicStatus?.isOnline !== undefined) {
           setIsOnline(Boolean(data.clinicStatus.isOnline));
+        } else if (settings?.clinicStatus) {
+          setIsOnline(settings.clinicStatus === "AVAILABLE");
         }
       }
       setWaitlist(wlRes?.waitlist || wlRes?.data?.waitlist || []);
@@ -96,13 +104,14 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [profile, fetchWorkspace]);
+  }, [profile, settings, fetchWorkspace]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   const handleToggleOnline = async () => {
+    if (isOnline === null) return;
     setIsTogglingStatus(true);
     const nextState = !isOnline;
     try {
@@ -135,12 +144,33 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
     }
   };
 
-  const handleDownloadQrSticker = () => {
+  const handleDownloadQrSticker = async () => {
     if (!profile?.slug && !profile?.id) return;
     const url = `${DEFAULT_API_BASE_URL}/api/doctor/qr-pdf?doctorId=${profile.id}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert("Download Error", "Could not open download link.");
-    });
+    setIsDownloadingQr(true);
+    try {
+      const fileUri = `${FileSystem.documentDirectory}JivniCare_QR_Sticker_${profile.id}.pdf`;
+      const result = await FileSystem.downloadAsync(url, fileUri);
+      if (result?.status === 200) {
+        Alert.alert(
+          "QR Sticker Downloaded",
+          "Your Clinic QR Sticker PDF has been downloaded directly to your device.",
+          [
+            {
+              text: "Preview PDF",
+              onPress: () => WebBrowser.openBrowserAsync(url),
+            },
+            { text: "Done", style: "cancel" },
+          ]
+        );
+      } else {
+        await WebBrowser.openBrowserAsync(url);
+      }
+    } catch {
+      await WebBrowser.openBrowserAsync(url);
+    } finally {
+      setIsDownloadingQr(false);
+    }
   };
 
   const handleShareProfile = () => {
@@ -258,16 +288,24 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
             <View style={{ flex: 1 }}>
               <Text style={styles.operationsTitle}>Today's Clinic Status</Text>
               <Text style={styles.operationsSub}>
-                {isOnline ? "Bookings: Active & Open" : "Bookings: Paused by you"}
+                {isOnline === null
+                  ? "Checking clinic status..."
+                  : isOnline
+                  ? "Bookings: Active & Open"
+                  : "Bookings: Paused by you"}
               </Text>
             </View>
             <TouchableOpacity
               style={[
                 styles.bookingToggleBtn,
-                isOnline ? styles.bookingToggleActive : styles.bookingTogglePaused,
+                isOnline === null
+                  ? { backgroundColor: colors.mutedBackground, borderColor: colors.cardBorder }
+                  : isOnline
+                  ? styles.bookingToggleActive
+                  : styles.bookingTogglePaused,
               ]}
               onPress={handleToggleOnline}
-              disabled={isTogglingStatus}
+              disabled={isTogglingStatus || isOnline === null}
               activeOpacity={0.8}
             >
               <View
@@ -282,7 +320,13 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
                   { color: isOnline ? "#FFFFFF" : colors.textPrimary },
                 ]}
               >
-                {isTogglingStatus ? "Updating..." : isOnline ? "Pause bookings" : "Resume bookings"}
+                {isTogglingStatus
+                  ? "Updating..."
+                  : isOnline === null
+                  ? "Loading..."
+                  : isOnline
+                  ? "Pause bookings"
+                  : "Resume bookings"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -516,6 +560,9 @@ export const OverviewDashboardScreen: React.FC<OverviewDashboardScreenProps> = (
             <ArrowRight size={18} color="#10B981" />
           </TouchableOpacity>
         </View>
+
+        {/* Minimal App Footer Branding */}
+        <AppFooterBranding />
       </ScrollView>
     </ScreenContainer>
   );

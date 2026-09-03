@@ -63,6 +63,7 @@ export interface DoctorSettings {
   clinicStatus: ClinicAvailabilityStatus;
   statusReason: string;
   statusExpiresAt: string | null;
+  expertiseTags?: string[];
 }
 
 export interface ShiftSchedule {

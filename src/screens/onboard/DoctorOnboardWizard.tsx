@@ -52,6 +52,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { OnboardSuccessReceiptScreen } from "./OnboardSuccessReceiptScreen";
+import { LegalViewerModal, LegalDocType } from "../legal/LegalViewerModal";
 
 export interface DoctorOnboardWizardProps {
   initialStep?: number;
@@ -154,6 +155,8 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
     sunday: { isOpen: false, start: "09:00", end: "14:00", maxPatients: 0 },
   });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [legalModalVisible, setLegalModalVisible] = useState(false);
+  const [legalDocType, setLegalDocType] = useState<LegalDocType>("TERMS");
   const [submittedReceipt, setSubmittedReceipt] = useState<{ registrationId: string } | null>(null);
 
   const storageKey = user?.id ? `jc_onboard_draft_${user.id}` : user?.email ? `jc_onboard_draft_${user.email}` : "jc_onboard_draft_guest";
@@ -1477,7 +1480,37 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
                       {acceptedTerms && <Check size={14} color="#FFFFFF" />}
                     </View>
                     <Text style={styles.termsText}>
-                      I confirm that the medical credentials and clinic details provided are authentic and compliant with National Medical Commission (NMC) regulations.
+                      By submitting this registration, I confirm that all medical credentials and clinic details provided are authentic and compliant with National Medical Commission (NMC) regulations, and I agree to JivniCare&apos;s{" "}
+                      <Text
+                        style={{ color: colors.primary, fontWeight: "700", textDecorationLine: "underline" }}
+                        onPress={() => {
+                          setLegalDocType("TERMS");
+                          setLegalModalVisible(true);
+                        }}
+                      >
+                        Terms of Service
+                      </Text>
+                      ,{" "}
+                      <Text
+                        style={{ color: colors.primary, fontWeight: "700", textDecorationLine: "underline" }}
+                        onPress={() => {
+                          setLegalDocType("PRIVACY");
+                          setLegalModalVisible(true);
+                        }}
+                      >
+                        Privacy Policy
+                      </Text>
+                      , and{" "}
+                      <Text
+                        style={{ color: colors.primary, fontWeight: "700", textDecorationLine: "underline" }}
+                        onPress={() => {
+                          setLegalDocType("DISCLAIMER");
+                          setLegalModalVisible(true);
+                        }}
+                      >
+                        Medical Disclaimer
+                      </Text>
+                      .
                     </Text>
                   </TouchableOpacity>
                 </Card>
@@ -1573,6 +1606,13 @@ export const DoctorOnboardWizard: React.FC<DoctorOnboardWizardProps> = ({
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Legal & Compliance In-App Viewer Modal */}
+      <LegalViewerModal
+        visible={legalModalVisible}
+        initialDoc={legalDocType}
+        onClose={() => setLegalModalVisible(false)}
+      />
     </ScreenContainer>
   );
 };

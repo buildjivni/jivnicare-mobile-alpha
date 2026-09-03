@@ -20,9 +20,14 @@ import {
   CheckCircle2,
   HelpCircle,
   Sparkles,
+  ArrowLeft,
 } from "lucide-react-native";
 
-export const BillingScreen: React.FC = () => {
+export interface BillingScreenProps {
+  onBack?: () => void;
+}
+
+export const BillingScreen: React.FC<BillingScreenProps> = ({ onBack }) => {
   const { profile } = useWorkspaceStore();
 
   const pricing = profile?.platformPricing;
@@ -43,8 +48,17 @@ export const BillingScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Partner Subscription</Text>
-          <Text style={styles.subtitle}>Manage platform tier, pricing and partnership benefits</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {onBack && (
+              <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+                <ArrowLeft size={20} color={colors.navy} />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Partner Subscription</Text>
+              <Text style={styles.subtitle}>Manage platform tier, pricing and partnership benefits</Text>
+            </View>
+          </View>
         </View>
 
         {/* Active Plan Card */}
@@ -241,5 +255,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 12,
     lineHeight: 18,
+    marginBottom: 12,
+  },
+  backButton: {
+    padding: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.mutedBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
 });
